@@ -1,0 +1,38 @@
+systems:
+
+  database:
+    paths:
+      - src/db
+      - migrations
+
+    downstream_dependencies:
+      - services
+      - analytics
+
+  services:
+    paths:
+      - src/services
+
+    downstream_dependencies:
+      - api
+
+  api:
+    paths:
+      - src/api
+
+    downstream_dependencies:
+      - ui
+      - integrations
+
+  analytics:
+    paths:
+      - analytics
+      - models
+
+  ui:
+    paths:
+      - src/ui
+
+  integrations:
+    paths:
+      - src/integrations

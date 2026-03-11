@@ -1,0 +1,11 @@
+data_models:
+
+  sales_fact:
+    owner: analytics
+    depends_on:
+      - database.sales_table
+
+  pricing_engine:
+    owner: services
+    depends_on:
+      - database.pricing_table
