@@ -1,0 +1,16 @@
+﻿plan_dependency_graph:
+  plans:
+    - plan: shared_schema_update
+      depends_on: []
+      blocks:
+        - example_plan
+      impacts:
+        - database
+
+    - plan: example_plan
+      depends_on:
+        - shared_schema_update
+      blocks: []
+      impacts:
+        - api_layer
+        - database

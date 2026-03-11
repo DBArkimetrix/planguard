@@ -1,0 +1,13 @@
+﻿system:
+  name: agent_framework_v3
+  description: framework for safe multi-agent software delivery
+
+components:
+  - name: planning
+    responsibility: plans, backlog, sprint sequencing
+  - name: safety
+    responsibility: risk scoring and gating
+  - name: orchestration
+    responsibility: dependency and collision management
+  - name: validation
+    responsibility: script-based verification of rules

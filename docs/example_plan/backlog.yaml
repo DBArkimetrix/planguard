@@ -1,0 +1,17 @@
+﻿phases:
+  - phase: analysis
+    tasks:
+      - review dependencies
+      - review impact surface
+      - identify collisions and conflicts
+
+  - phase: implementation
+    tasks:
+      - implement in isolated slices
+      - keep sequencing testable
+
+  - phase: validation
+    tasks:
+      - run unit tests
+      - run regression tests
+      - review unintended consequences

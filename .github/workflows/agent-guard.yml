@@ -1,0 +1,31 @@
+﻿name: Agent Guard
+
+on:
+  pull_request:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  validate-framework:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Validate example plan
+        run: python scripts/validate_plan.py docs/example_plan
+
+      - name: Compute risk score
+        run: python scripts/compute_risk_score.py
+
+      - name: Show plan DAG
+        run: python scripts/compute_plan_dag.py
+
+      - name: Show ownership map
+        run: python scripts/check_file_ownership.py

@@ -1,0 +1,3 @@
+﻿dependencies:
+  - component: shared_schema_update
+    impact: prerequisite for database-touching work

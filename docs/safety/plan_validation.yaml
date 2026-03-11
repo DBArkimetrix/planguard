@@ -1,0 +1,9 @@
+﻿validation:
+  checks:
+    - dependency_graph_reviewed
+    - regression_tests_defined
+    - collision_detection_completed
+    - architecture_review_completed
+    - orchestration_review_completed
+    - unintended_consequences_review_completed
+  status: pending

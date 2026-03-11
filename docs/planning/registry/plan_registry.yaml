@@ -1,0 +1,7 @@
+﻿plan_registry:
+  - name: shared_schema_update
+    created: 2026-03-11
+    description: prepare schema for dependent work
+  - name: example_plan
+    created: 2026-03-11
+    description: example plan demonstrating workflow

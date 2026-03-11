@@ -1,0 +1,9 @@
+﻿orchestration_status:
+  last_run: 2026-03-11
+  computed_ready_plans:
+    - shared_schema_update
+  blocked_plans:
+    - name: example_plan
+      blocked_by:
+        - shared_schema_update
+  parallel_safe_groups: []

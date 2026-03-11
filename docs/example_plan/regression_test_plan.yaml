@@ -1,0 +1,5 @@
+﻿regression_tests:
+  - area: planning workflow
+    validation: confirm required docs exist
+  - area: orchestration
+    validation: confirm blocked plans stay blocked until dependencies clear

@@ -1,0 +1,8 @@
+﻿tasks:
+  - id: TASK-001
+    title: bootstrap_example_plan
+    plan: example_plan
+    priority: medium
+    status: pending
+    owner: unassigned
+    dependencies: []

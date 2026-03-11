@@ -1,0 +1,5 @@
+﻿agent_memory:
+  entries:
+    - id: MEM-001
+      topic: workflow
+      note: never implement before plan, backlog, sprint plan, safety, and orchestration checks
