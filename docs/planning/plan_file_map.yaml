@@ -3,3 +3,13 @@ plan_file_map:
     allowed_paths:
       - src
       - tests
+  - plan: package_repair
+    allowed_paths:
+      - agent_framework
+      - scripts
+      - README.md
+      - pyproject.toml
+      - requirements.txt
+      - .gitignore
+      - docs/package_repair
+      - docs/planning

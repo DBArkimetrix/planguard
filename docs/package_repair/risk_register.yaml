@@ -1,0 +1,15 @@
+risks:
+  - id: PKG-001
+    description: Refactoring script entrypoints into package modules could break existing script-based workflows.
+    mitigation: preserve script wrappers and update README examples to supported commands.
+    category: regression
+
+  - id: PKG-002
+    description: Packaging fixes may still omit files if the rebuilt distribution is not inspected.
+    mitigation: rebuild the wheel and sdist and inspect their contents as part of validation.
+    category: release
+
+  - id: PKG-003
+    description: CLI output changes could invalidate assumptions in downstream automation.
+    mitigation: keep command names stable and favor additive behavior over renamed commands.
+    category: compatibility

@@ -1,7 +1,10 @@
-﻿active_plans:
+active_plans:
   - name: shared_schema_update
     status: pending
     owner: unassigned
   - name: example_plan
     status: pending
     owner: unassigned
+  - name: package_repair
+    status: completed
+    owner: codex

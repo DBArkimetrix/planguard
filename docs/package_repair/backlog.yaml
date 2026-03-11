@@ -1,0 +1,19 @@
+phases:
+  - phase: analysis
+    tasks:
+      - confirm packaging defects in the current dist artifacts
+      - identify CLI and documentation drift introduced by the restructure
+      - verify plan-format mismatches affecting graph analysis
+
+  - phase: implementation
+    tasks:
+      - add importable package modules for planning, validation, safety, architecture, and orchestration flows
+      - wire the CLI to real framework behavior
+      - align plan graph parsing with generated plan documents
+      - update scripts and README to the supported entrypoints
+
+  - phase: validation
+    tasks:
+      - smoke test CLI commands in the project virtual environment
+      - rebuild distributions and inspect included files
+      - rerun targeted framework checks to confirm readiness

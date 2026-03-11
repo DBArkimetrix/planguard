@@ -1,0 +1,14 @@
+dependencies:
+  - id: package_module_refactor
+    depends_on: []
+    impact: enables CLI commands and script wrappers to share one code path
+
+  - id: cli_integration
+    depends_on:
+      - package_module_refactor
+    impact: exposes package functionality through the console script
+
+  - id: artifact_validation
+    depends_on:
+      - cli_integration
+    impact: confirms the distribution contains the required runtime modules

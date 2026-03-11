@@ -1,16 +1,13 @@
-import yaml
 from pathlib import Path
+import sys
 
-data=yaml.safe_load(Path("docs/planning/active_plans.yaml").read_text())
 
-if not data["active_plans"]:
-    print("No active plans. Skipping execution schedule.")
-    exit(0)
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-plans=[p["name"] for p in data["active_plans"]]
+from agent_framework.orchestration.build_execution_schedule import main
 
-schedule={"phase_1":plans}
 
-Path("docs/planning/execution_schedule.yaml").write_text(
-yaml.safe_dump({"execution_schedule":schedule})
-)
+if __name__ == "__main__":
+    raise SystemExit(main())

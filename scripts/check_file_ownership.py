@@ -1,4 +1,4 @@
-﻿from pathlib import Path
+from pathlib import Path
 import yaml
 
 def main():
@@ -11,3 +11,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
