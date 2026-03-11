@@ -5,7 +5,7 @@ repos:
 
       - id: validate-plan
         name: Validate plan structure
-        entry: python scripts/validate_plan.py docs
+        entry: python scripts/validate_plan.py
         language: system
         pass_filenames: false
 

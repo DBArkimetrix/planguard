@@ -1,12 +1,6 @@
 ﻿from pathlib import Path
 import sys
 
-plan_dirs = [p for p in Path("docs").glob("*") if p.is_dir()]
-
-if not plan_dirs:
-    print("No plan directories detected. Skipping validation.")
-    sys.exit(0)
-
 REQUIRED = [
     "plan.yaml",
     "backlog.yaml",
@@ -19,20 +13,38 @@ REQUIRED = [
     "collision_detection.yaml",
 ]
 
-def main():
-    if len(sys.argv) < 2:
-        print("Usage: python scripts/validate_plan.py docs/<plan_name>")
-        sys.exit(1)
+docs_dir = Path("docs")
 
-    plan_dir = Path(sys.argv[1])
+if not docs_dir.exists():
+    print("No docs directory detected. Skipping validation.")
+    sys.exit(0)
+
+plan_dirs = []
+
+for p in docs_dir.iterdir():
+    if p.is_dir() and (p / "plan.yaml").exists():
+        plan_dirs.append(p)
+
+if not plan_dirs:
+    print("No plan directories detected. Skipping validation.")
+    sys.exit(0)
+
+errors = False
+
+for plan_dir in plan_dirs:
+
     missing = [f for f in REQUIRED if not (plan_dir / f).exists()]
+
     if missing:
+        print(f"\nPlan validation failed: {plan_dir}")
         print("Missing required files:")
+
         for f in missing:
             print(f" - {f}")
-        sys.exit(2)
 
-    print("Plan structure validation passed.")
+        errors = True
 
-if __name__ == "__main__":
-    main()
+if errors:
+    sys.exit(2)
+
+print("All plan structures valid.")
