@@ -1,6 +1,12 @@
 ﻿from pathlib import Path
 import sys
 
+plan_dirs = [p for p in Path("docs").glob("*") if p.is_dir()]
+
+if not plan_dirs:
+    print("No plan directories detected. Skipping validation.")
+    sys.exit(0)
+
 REQUIRED = [
     "plan.yaml",
     "backlog.yaml",

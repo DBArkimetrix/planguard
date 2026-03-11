@@ -5,6 +5,10 @@ data=yaml.safe_load(Path("docs/planning/plan_file_map.yaml").read_text())
 
 rows=data["plan_file_map"]
 
+if not rows:
+    print("No plans registered. Skipping collision detection.")
+    exit(0)
+
 collisions=[]
 
 for i in range(len(rows)):
