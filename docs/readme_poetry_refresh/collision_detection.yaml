@@ -1,0 +1,11 @@
+collision_checks:
+  - check: overlapping edits with package_repair documentation changes reviewed
+    status: reviewed
+  - check: conflicts with active planning and registry files reviewed
+    status: reviewed
+  - check: regression risk for package installation instructions reviewed
+    status: reviewed
+  - check: security and unintended-consequence review completed for documentation-only changes
+    status: reviewed
+  - check: architectural consistency between README guidance and packaging metadata reviewed
+    status: reviewed

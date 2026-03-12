@@ -1,0 +1,11 @@
+collision_checks:
+  - check: overlap with earlier README packaging edits reviewed
+    status: reviewed
+  - check: conflicts with planning registry files reviewed
+    status: reviewed
+  - check: regression risk for workflow enforcement wording reviewed
+    status: reviewed
+  - check: security and unintended-consequence review completed for documentation-only changes
+    status: reviewed
+  - check: architectural consistency between plain-language guidance and enforced workflow reviewed
+    status: reviewed

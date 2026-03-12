@@ -1,0 +1,10 @@
+risks:
+  - id: DOC-001
+    description: Making Poetry primary in the README could mislead users into thinking pip installation is unsupported.
+    mitigation: keep a separate package usage section with explicit pip commands.
+    category: documentation
+
+  - id: DOC-002
+    description: README wording could drift from actual automation, which still installs dependencies with pip.
+    mitigation: describe Poetry as the primary maintainer workflow and avoid claiming CI uses Poetry today.
+    category: regression

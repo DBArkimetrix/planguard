@@ -1,0 +1,9 @@
+regression_tests:
+  - area: plain-language overview
+    validation: confirm a non-technical reader can identify what the tool is for and when to use it
+
+  - area: workflow fidelity
+    validation: confirm the README still states that implementation is blocked until planning and safety artifacts exist
+
+  - area: installation guidance
+    validation: confirm the README still preserves Poetry-first local development instructions

@@ -1,0 +1,10 @@
+handoff:
+  summary: README now explains the framework in plain language and shows how a non-programmer should use it with AI agents before allowing implementation.
+
+current_state:
+  implementation_complete: true
+  safety_gate_passed: true
+  orchestration_ready: true
+
+next_actions:
+  - refine examples later if the CLI surface changes

@@ -1,1 +1,19 @@
-collisions: []
+collisions:
+- plans:
+  - readme_plain_language
+  - readme_poetry_refresh
+  overlap:
+  - README.md
+  - docs/planning
+- plans:
+  - readme_plain_language
+  - package_repair
+  overlap:
+  - README.md
+  - docs/planning
+- plans:
+  - readme_poetry_refresh
+  - package_repair
+  overlap:
+  - README.md
+  - docs/planning

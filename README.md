@@ -1,25 +1,68 @@
 # AI Agent Engineering Framework
 
-A lightweight governance framework for safely using AI coding agents in software projects.
+A way to control how AI coding agents make changes in a software project.
+
+If you are using an AI agent to write code, this framework gives the agent a process to follow before it starts changing files. Instead of letting the agent jump straight into implementation, you require it to first write down the plan, list the work in phases, check for risks, and confirm that its changes will not collide with other work.
 
 The framework enforces a documentation-first workflow:
 
 `PLAN -> BACKLOG -> SPRINT PLAN -> SAFETY CHECK -> ORCHESTRATE -> IMPLEMENT -> UPDATE DOCS -> HANDOFF`
 
-It is designed for repositories where AI agents and human developers need explicit planning, collision detection, safety review, and orchestration before code changes are implemented.
+In plain terms, this tool is for teams who want AI agents to behave more like careful contributors and less like unchecked autocomplete.
+
+## What This Is For
+
+Use this framework when:
+
+- you want an AI agent to propose work before touching the code
+- you want a human to review the work plan before implementation starts
+- several agents or people may work in the same repository at the same time
+- you want a written record of risks, dependencies, testing, and handoff
+
+Do not think of this as the thing that builds your product. Think of it as the rulebook and paperwork system that sits around the agent and controls how the agent is allowed to work.
+
+## How A Non-Programmer Would Use It
+
+1. You give the agent a task, such as "add a customer billing feature" or "fix the approval workflow."
+2. The agent uses this framework to create a folder in `docs/<plan_name>/` for that task.
+3. Inside that folder, the agent must write the plan, backlog, sprint plan, risk review, regression test plan, and handoff documents.
+4. A human reviews those documents to make sure the task is sensible, safe, and not overlapping with other work.
+5. Only after that review passes should the agent start changing code.
+6. When the work is done, the agent updates the progress and handoff documents so the next person can see what changed and what risks remain.
+
+The main idea is simple: make the agent explain itself before it acts.
 
 ## What It Provides
 
-- Plan scaffolding under `docs/<plan_name>/`
-- Plan validation against required workflow artifacts
-- Collision detection across registered plan ownership
-- Execution scheduling for active plans
-- Architecture impact analysis from changed files
-- A package CLI plus compatible `scripts/*.py` wrappers
+- templates and commands for creating the required planning documents
+- checks that confirm the required documents exist before implementation
+- collision checks to spot when two plans may touch the same area
+- orchestration support so active plans can be sequenced safely
+- architecture and change-impact analysis helpers
+- a CLI and script wrappers so agents can run the workflow consistently
 
 ## Installation
 
 For local development in this repository:
+
+```bash
+poetry install
+```
+
+Run the CLI in the Poetry environment:
+
+```bash
+poetry run agent --help
+poetry run agent validate
+```
+
+If you need to build distribution artifacts locally:
+
+```bash
+poetry build
+```
+
+Alternative editable install without Poetry:
 
 ```bash
 pip install -r requirements.txt
@@ -36,17 +79,24 @@ pip install agent-engineering-framework
 
 The installed console script is `agent`.
 
+Typical use with an agent:
+
+- ask the agent to create a plan first
+- review the generated documents in `docs/<plan_name>/`
+- ask the agent to run validation and safety checks
+- only then allow implementation work
+
 ```bash
-agent init
-agent plan "Implement pricing engine"
-agent validate
-agent graph example_plan
+poetry run agent init
+poetry run agent plan "Implement pricing engine"
+poetry run agent validate
+poetry run agent graph example_plan
 ```
 
 Equivalent module entrypoint:
 
 ```bash
-python -m agent_framework.cli --help
+poetry run python -m agent_framework.cli --help
 ```
 
 ## Legacy Script Wrappers

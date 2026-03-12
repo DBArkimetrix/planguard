@@ -1,11 +1,15 @@
 orchestration_status:
-  last_run: 2026-03-11
+  last_run: 2026-03-12
   computed_ready_plans:
     - shared_schema_update
+    - readme_plain_language
+    - readme_poetry_refresh
     - package_repair
   blocked_plans:
     - name: example_plan
       blocked_by:
         - shared_schema_update
   parallel_safe_groups:
+    - - readme_plain_language
+    - - readme_poetry_refresh
     - - package_repair

@@ -1,0 +1,16 @@
+phases:
+  - phase: analysis
+    tasks:
+      - identify jargon in the current README that obscures the tool's purpose
+      - determine the minimum plain-language explanation needed for non-programmers
+
+  - phase: implementation
+    tasks:
+      - add a plain-language overview of what the framework does
+      - explain how a human should use it with an AI coding agent
+      - keep the technical install and CLI sections concise
+
+  - phase: validation
+    tasks:
+      - review the README for clarity, not just technical correctness
+      - confirm the new wording remains consistent with the framework workflow

@@ -1,0 +1,10 @@
+handoff:
+  summary: README installation and CLI guidance now presents Poetry as the primary local development workflow while retaining pip instructions for package consumers.
+
+current_state:
+  implementation_complete: true
+  safety_gate_passed: true
+  orchestration_ready: true
+
+next_actions:
+  - align CI workflows later if the repository standardizes on Poetry for automation as well

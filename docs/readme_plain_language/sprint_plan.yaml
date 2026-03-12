@@ -1,0 +1,20 @@
+sprints:
+  - sprint: 1
+    objective: define the plain-language message
+    tasks:
+      - review current README drift
+      - review risks and unintended consequences
+      - confirm orchestration readiness
+
+  - sprint: 2
+    objective: rewrite the README in a non-technical style
+    tasks:
+      - add a simple overview
+      - add a step-by-step human-plus-agent usage flow
+      - simplify the feature description
+
+  - sprint: 3
+    objective: validate and hand off
+    tasks:
+      - review final wording
+      - update progress and handoff artifacts

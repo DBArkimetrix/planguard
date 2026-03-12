@@ -1,0 +1,9 @@
+regression_tests:
+  - area: installation guidance
+    validation: confirm README Poetry commands are consistent with pyproject.toml and poetry.lock
+
+  - area: package usage guidance
+    validation: confirm README still includes pip installation for package consumers
+
+  - area: workflow consistency
+    validation: confirm README does not claim CI currently runs Poetry commands

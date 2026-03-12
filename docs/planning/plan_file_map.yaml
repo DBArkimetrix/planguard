@@ -3,6 +3,16 @@ plan_file_map:
     allowed_paths:
       - src
       - tests
+  - plan: readme_plain_language
+    allowed_paths:
+      - README.md
+      - docs/readme_plain_language
+      - docs/planning
+  - plan: readme_poetry_refresh
+    allowed_paths:
+      - README.md
+      - docs/readme_poetry_refresh
+      - docs/planning
   - plan: package_repair
     allowed_paths:
       - agent_framework

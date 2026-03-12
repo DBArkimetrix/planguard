@@ -1,0 +1,16 @@
+phases:
+  - phase: analysis
+    tasks:
+      - compare the current README install instructions with the repository packaging configuration
+      - confirm whether CI and packaging metadata require Poetry-specific wording
+
+  - phase: implementation
+    tasks:
+      - rewrite the installation section to make Poetry the primary local development workflow
+      - keep package-consumer pip installation instructions intact
+      - add concise Poetry command examples for local CLI usage and builds
+
+  - phase: validation
+    tasks:
+      - review README commands against pyproject.toml and poetry.lock
+      - confirm the updated wording does not imply unsupported CI behavior
