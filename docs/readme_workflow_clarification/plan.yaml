@@ -1,0 +1,26 @@
+plan:
+  name: readme_workflow_clarification
+  created: 2026-03-12
+  owner: codex
+  priority: medium
+  status: completed
+
+objective:
+  description: Clarify the README so users know what to do after `agent init` and `agent plan`, explain how to use the framework from inside an existing repository, and state exactly what `AGENTS.md` should contain and where it belongs.
+
+scope:
+  included:
+    - README.md
+    - docs/readme_workflow_clarification
+    - docs/planning
+  excluded:
+    - agent_framework runtime behavior
+    - packaging metadata changes
+    - CI workflow changes
+
+allowed_paths:
+  - README.md
+  - docs/readme_workflow_clarification
+  - docs/planning
+
+dependencies: []

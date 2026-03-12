@@ -12,8 +12,26 @@ collisions:
   - README.md
   - docs/planning
 - plans:
+  - readme_plain_language
+  - readme_workflow_clarification
+  overlap:
+  - README.md
+  - docs/planning
+- plans:
   - readme_poetry_refresh
   - package_repair
+  overlap:
+  - README.md
+  - docs/planning
+- plans:
+  - readme_poetry_refresh
+  - readme_workflow_clarification
+  overlap:
+  - README.md
+  - docs/planning
+- plans:
+  - package_repair
+  - readme_workflow_clarification
   overlap:
   - README.md
   - docs/planning

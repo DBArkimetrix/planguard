@@ -1,0 +1,11 @@
+collision_checks:
+  - check: overlap with prior README documentation plans reviewed
+    status: reviewed
+  - check: conflicts with `docs/planning/active_plans.yaml` reviewed
+    status: reviewed
+  - check: conflicts with `docs/planning/plan_file_map.yaml` reviewed
+    status: reviewed
+  - check: regression risk for workflow wording reviewed
+    status: reviewed
+  - check: unintended-consequence risk for existing-project setup guidance reviewed
+    status: reviewed

@@ -23,3 +23,8 @@ plan_file_map:
       - .gitignore
       - docs/package_repair
       - docs/planning
+  - plan: readme_workflow_clarification
+    allowed_paths:
+      - README.md
+      - docs/readme_workflow_clarification
+      - docs/planning

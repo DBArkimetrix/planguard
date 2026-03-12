@@ -1,0 +1,14 @@
+dependencies:
+  - id: workflow_analysis
+    depends_on: []
+    impact: establish current README gaps and confirm current CLI behavior
+
+  - id: readme_update
+    depends_on:
+      - workflow_analysis
+    impact: deliver clearer workflow and integration instructions
+
+  - id: validation_and_handoff
+    depends_on:
+      - readme_update
+    impact: confirm structural validity and record the documentation outcome

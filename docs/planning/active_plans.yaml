@@ -8,3 +8,6 @@ active_plans:
   - name: package_repair
     status: completed
     owner: codex
+  - name: readme_workflow_clarification
+    status: completed
+    owner: codex

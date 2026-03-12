@@ -3,3 +3,4 @@ execution_schedule:
   - readme_plain_language
   - readme_poetry_refresh
   - package_repair
+  - readme_workflow_clarification

@@ -99,6 +99,140 @@ Equivalent module entrypoint:
 poetry run python -m agent_framework.cli --help
 ```
 
+## What To Do After `agent init` And `agent plan`
+
+`agent init` creates the shared documentation folders. `agent plan <name>` creates a starter plan folder in `docs/<plan_name>/`.
+
+Those commands are the beginning of the workflow, not the end of it. After `agent plan`, the next steps are:
+
+1. Review and complete the generated files in `docs/<plan_name>/`.
+2. Make sure the plan has a real scope, allowed paths, risks, backlog phases, sprint sequencing, and handoff notes.
+3. Add the plan to `docs/planning/active_plans.yaml` if it is now an active piece of work.
+4. Add the plan's owned paths to `docs/planning/plan_file_map.yaml` so collision checks can detect overlap.
+5. Run the validation and planning checks.
+6. Only then start implementation work.
+
+Typical command sequence:
+
+```bash
+poetry run agent init
+poetry run agent plan "Implement pricing engine"
+poetry run agent validate
+poetry run python scripts/detect_collisions.py
+poetry run python scripts/build_execution_schedule.py
+poetry run python scripts/compute_risk_score.py
+```
+
+Important: in the current implementation, `agent validate` checks that the required plan files exist. It does not fully block implementation by itself.
+
+To make the workflow actually govern agent behavior, the repository the agent is editing should contain a root-level `AGENTS.md` that says, in plain terms:
+
+- the agent must not start implementation before the plan, backlog, sprint plan, safety review, and orchestration review are complete
+- the agent must create and update the required files in `docs/<plan_name>/`
+- the agent must update `docs/planning/active_plans.yaml` and `docs/planning/plan_file_map.yaml` for active work
+- the agent must run the validation, collision, and orchestration checks before coding
+- the agent must update progress and handoff docs when the work is done
+
+That means the workflow is enforced operationally by:
+
+- the root `AGENTS.md` instructions in the target repository
+- the generated planning artifacts in `docs/`
+- human review
+- the validation, collision, and orchestration scripts
+
+When working with Codex or another coding agent, the `AGENTS.md` file should sit in the root of the repository being changed. If the agent is working in `/path/to/my-app`, use:
+
+```text
+/path/to/my-app/AGENTS.md
+```
+
+A minimal `AGENTS.md` for a project using this framework can say something like:
+
+```md
+# AGENTS.md
+
+This repository uses the agent-engineering-framework workflow.
+
+Mandatory workflow:
+PLAN -> BACKLOG -> SPRINT PLAN -> SAFETY CHECK -> ORCHESTRATE -> IMPLEMENT -> UPDATE DOCS -> HANDOFF
+
+Agents must not implement code until:
+- docs/<plan_name>/plan.yaml exists
+- docs/<plan_name>/backlog.yaml exists
+- docs/<plan_name>/sprint_plan.yaml exists
+- safety review artifacts are complete
+- orchestration review is complete
+- collision, regression, conflict, and unintended-consequence checks are reviewed
+
+Before implementation, agents must:
+- update docs/planning/active_plans.yaml
+- update docs/planning/plan_file_map.yaml
+- run validation and planning checks
+
+After implementation, agents must:
+- update progress.yaml
+- update handoff.yaml
+```
+
+You can keep more detailed instructions in that root `AGENTS.md`, but this is the minimum level of clarity needed if you want the agent to follow the process reliably.
+
+If you are prompting the agent directly in addition to using `AGENTS.md`, a reliable instruction looks like this:
+
+```text
+Use the AGENTS.md workflow. Do not implement yet.
+First complete or update docs/<plan_name>/, update active_plans.yaml and plan_file_map.yaml,
+run validation/collision/orchestration checks, and only implement after the plan is ready.
+```
+
+## Using This Framework Inside Another Repository
+
+There are two common ways to use the framework in an existing project.
+
+### Recommended: Copy The Workflow Into The Project Root
+
+Put the framework's operational files in the repository that the agent will actually modify:
+
+- `AGENTS.md`
+- `docs/`
+- `scripts/`
+- any project-specific templates or wrappers you want to keep
+
+This is the simplest setup because the agent sees the workflow rules and the plan artifacts in the same repository it is editing. In most cases, this is the setup you want.
+
+### Alternative: Keep The Framework In A Nested, Ignored Folder
+
+You can clone this repository into something like `.agent-framework/` and add that folder to `.gitignore`, but that should be treated as a source of templates and helper scripts, not as the primary instruction location for the agent.
+
+If you use this approach:
+
+- the repository root that the agent works in should still contain the authoritative `AGENTS.md`
+- that root `AGENTS.md` can either contain the full workflow instructions or point to the vendored framework copy
+- the active plan artifacts should still live in the target repository's `docs/` folder, not only inside the ignored framework clone
+
+In practice, the safest rule is:
+
+- put `AGENTS.md` at the root of the repository the agent is operating on
+- keep the active `docs/` planning files in that same repository
+- use the ignored framework clone only as a local helper/tooling source
+
+### Where `AGENTS.md` Should Live
+
+If Codex is opened on `/path/to/my-app`, then the file should normally be:
+
+```text
+/path/to/my-app/AGENTS.md
+```
+
+If this framework is vendored into:
+
+```text
+/path/to/my-app/.agent-framework/
+```
+
+then keep the framework copy there if you want, but also place an `AGENTS.md` in `/path/to/my-app/` so the workflow instructions apply to work across the whole repository.
+
+If you want, you can make the root `AGENTS.md` short and use it to reference or reproduce the policy from the vendored framework copy. What matters is that the root file is present and clearly tells the agent to use the workflow before making code changes.
+
 ## Legacy Script Wrappers
 
 The repository also keeps script wrappers for direct invocation from the repo root:
