@@ -1,0 +1,228 @@
+plan:
+  name: backlog_and_sprint_generation
+  status: completed
+  created: '2026-03-23'
+  owner: codex
+  priority: high
+objective: Extend PlanGuard so generated plans include backlog and sprint structure
+  with phased tasks, dependencies, and test expectations
+scope:
+  included:
+  - planguard
+  - tests
+  - README.md
+  - docs/architecture
+  - docs
+  excluded:
+  - unrelated modules
+phases:
+- name: analysis
+  tasks:
+  - Analyze current implementation
+  - Identify dependencies and risks
+- name: implementation
+  tasks:
+  - Implement changes in safe, testable slices
+- name: validation
+  tasks:
+  - Run tests and review for regressions
+risks:
+- id: RISK-001
+  description: Regression impact on existing behaviour
+  severity: medium
+  mitigation: Add targeted regression tests before changing code
+dependencies:
+- id: analysis
+  depends_on: []
+- id: implementation
+  depends_on:
+  - analysis
+- id: validation
+  depends_on:
+  - implementation
+backlog:
+- id: BL-001
+  title: Analyze scope, architecture touchpoints, and test impact
+  type: analysis
+  phase: analysis
+  scope:
+  - planguard
+  - tests
+  - README.md
+  - docs/architecture
+  - docs
+  depends_on: []
+  deliverables:
+  - Impacted modules and dependencies are identified
+  - Required tests and rollback considerations are documented
+  tests:
+  - Identify the regression coverage that must be preserved before coding begins
+  done_when:
+  - The implementation approach is clear
+  - The test strategy covers the affected areas
+- id: BL-002
+  title: Implement changes in planguard
+  type: implementation
+  phase: implementation
+  scope:
+  - planguard
+  depends_on:
+  - BL-001
+  deliverables:
+  - Code changes in planguard are implemented in safe, reviewable slices
+  tests:
+  - Add or update focused regression tests covering planguard
+  done_when:
+  - The planned work for planguard is complete
+- id: BL-003
+  title: Update automated coverage for tests
+  type: testing
+  phase: implementation
+  scope:
+  - tests
+  depends_on:
+  - BL-001
+  deliverables:
+  - Targeted tests in tests reflect the new behaviour
+  tests:
+  - Run the tests in or affected by tests
+  done_when:
+  - The planned work for tests is complete
+- id: BL-004
+  title: Document the change set for README.md
+  type: documentation
+  phase: implementation
+  scope:
+  - README.md
+  depends_on:
+  - BL-001
+  deliverables:
+  - Documentation in README.md explains the updated workflow or behaviour
+  tests:
+  - Review documentation accuracy for README.md against the implemented behaviour
+  done_when:
+  - The planned work for README.md is complete
+- id: BL-005
+  title: Document the change set for docs/architecture
+  type: documentation
+  phase: implementation
+  scope:
+  - docs/architecture
+  depends_on:
+  - BL-001
+  deliverables:
+  - Documentation in docs/architecture explains the updated workflow or behaviour
+  tests:
+  - Review documentation accuracy for docs/architecture against the implemented behaviour
+  done_when:
+  - The planned work for docs/architecture is complete
+- id: BL-006
+  title: Document the change set for docs
+  type: documentation
+  phase: implementation
+  scope:
+  - docs
+  depends_on:
+  - BL-001
+  deliverables:
+  - Documentation in docs explains the updated workflow or behaviour
+  tests:
+  - Review documentation accuracy for docs against the implemented behaviour
+  done_when:
+  - The planned work for docs is complete
+- id: BL-007
+  title: Run verification, regression checks, and handoff review
+  type: validation
+  phase: validation
+  scope:
+  - planguard
+  - tests
+  - README.md
+  - docs/architecture
+  - docs
+  depends_on:
+  - BL-002
+  - BL-003
+  - BL-004
+  - BL-005
+  - BL-006
+  deliverables:
+  - Verification commands pass
+  - Handoff notes capture any residual risk or follow-up work
+  tests:
+  - poetry run pytest tests/ -v
+  done_when:
+  - All tests pass
+  - No regressions in existing functionality
+sprints:
+- id: SPRINT-01
+  name: Discovery and test design
+  goal: Confirm scope, architecture impact, and required regression coverage before
+    implementation starts.
+  backlog_items:
+  - BL-001
+  focus_paths:
+  - README.md
+  - docs
+  - docs/architecture
+  - planguard
+  - tests
+  exit_criteria:
+  - The implementation approach is clear
+  - The test strategy covers the affected areas
+- id: SPRINT-02
+  name: Implementation slice 1
+  goal: Deliver a reviewable subset of the planned change set with matching test updates.
+  backlog_items:
+  - BL-002
+  - BL-003
+  focus_paths:
+  - planguard
+  - tests
+  exit_criteria:
+  - The planned work for planguard is complete
+  - The planned work for tests is complete
+- id: SPRINT-03
+  name: Implementation slice 2
+  goal: Deliver a reviewable subset of the planned change set with matching test updates.
+  backlog_items:
+  - BL-004
+  - BL-005
+  focus_paths:
+  - README.md
+  - docs/architecture
+  exit_criteria:
+  - The planned work for README.md is complete
+  - The planned work for docs/architecture is complete
+- id: SPRINT-04
+  name: Implementation slice 3
+  goal: Deliver a reviewable subset of the planned change set with matching test updates.
+  backlog_items:
+  - BL-006
+  focus_paths:
+  - docs
+  exit_criteria:
+  - The planned work for docs is complete
+- id: SPRINT-05
+  name: Verification and handoff
+  goal: Prove the change set works, document residual risk, and prepare completion.
+  backlog_items:
+  - BL-007
+  focus_paths:
+  - README.md
+  - docs
+  - docs/architecture
+  - planguard
+  - tests
+  exit_criteria:
+  - All tests pass
+  - No regressions in existing functionality
+done_when:
+- All tests pass
+- No regressions in existing functionality
+verify_commands:
+- poetry run pytest tests/ -v
+rollback_strategy: git revert to prior commit
+test_strategy:
+- area: Existing functionality in scope paths
+  validation: Confirm no unintended behaviour changes

@@ -8,6 +8,8 @@ import re
 
 import yaml
 
+from planguard.planning.build_work_breakdown import build_backlog, build_sprints
+
 
 def slugify(text: str) -> str:
     text = text.strip().lower()
@@ -44,6 +46,17 @@ def generate_plan(
 
     included = scope_included or ["src", "tests"]
     excluded = scope_excluded or ["unrelated modules"]
+    plan_done_when = done_when or [
+        "All tests pass",
+        "No regressions in existing functionality",
+    ]
+    plan_verify_commands = verify_commands or []
+    backlog = build_backlog(
+        included,
+        done_when=plan_done_when,
+        verify_commands=plan_verify_commands,
+    )
+    sprints = build_sprints(backlog)
 
     plan_data = {
         "plan": {
@@ -92,11 +105,10 @@ def generate_plan(
             {"id": "implementation", "depends_on": ["analysis"]},
             {"id": "validation", "depends_on": ["implementation"]},
         ],
-        "done_when": done_when or [
-            "All tests pass",
-            "No regressions in existing functionality",
-        ],
-        "verify_commands": verify_commands or [],
+        "backlog": backlog,
+        "sprints": sprints,
+        "done_when": plan_done_when,
+        "verify_commands": plan_verify_commands,
         "rollback_strategy": rollback_strategy or "git revert to prior commit",
         "test_strategy": [
             {

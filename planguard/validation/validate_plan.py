@@ -1,8 +1,10 @@
 """Validate plan structure against the consolidated format.
 
 Each plan directory must contain:
-  - plan.yaml with required sections: plan, objective, scope, phases, risks, dependencies
-  - status.yaml with required sections: status, remaining_steps
+  - plan.yaml with required sections: plan, objective, scope, phases, backlog,
+    sprints, risks, dependencies
+  - status.yaml with required sections: status, activation, verification,
+    remaining_steps, completed_steps, handoff
 """
 
 from __future__ import annotations
@@ -15,13 +17,32 @@ import yaml
 
 REQUIRED_FILES = ["plan.yaml", "status.yaml"]
 
-REQUIRED_PLAN_SECTIONS = ["plan", "objective", "scope", "phases", "risks", "dependencies"]
+REQUIRED_PLAN_SECTIONS = [
+    "plan",
+    "objective",
+    "scope",
+    "phases",
+    "backlog",
+    "sprints",
+    "risks",
+    "dependencies",
+]
 
 REQUIRED_PLAN_FIELDS = ["name", "status", "created", "priority"]
 
 VALID_STATUSES = {"draft", "active", "completed", "archived"}
 
-REQUIRED_STATUS_SECTIONS = ["status", "remaining_steps", "completed_steps", "handoff"]
+REQUIRED_STATUS_SECTIONS = [
+    "status",
+    "activation",
+    "verification",
+    "remaining_steps",
+    "completed_steps",
+    "handoff",
+]
+
+REQUIRED_BACKLOG_FIELDS = ["id", "title", "type", "phase", "scope", "depends_on", "deliverables", "tests", "done_when"]
+REQUIRED_SPRINT_FIELDS = ["id", "name", "goal", "backlog_items", "focus_paths", "exit_criteria"]
 
 
 def discover_plan_dirs(docs_dir: Path) -> list[Path]:
@@ -89,6 +110,36 @@ def validate_plan(plan_dir: Path) -> tuple[bool, list[str]]:
         messages.append("Plan must have at least one phase")
         errors = True
 
+    backlog = data.get("backlog", [])
+    if not backlog:
+        messages.append("Plan must include at least one backlog item")
+        errors = True
+    elif isinstance(backlog, list):
+        for index, item in enumerate(backlog, start=1):
+            if not isinstance(item, dict):
+                messages.append(f"Backlog item {index} must be a mapping")
+                errors = True
+                continue
+            for field_name in REQUIRED_BACKLOG_FIELDS:
+                if field_name not in item:
+                    messages.append(f"Backlog item {index} missing field: {field_name}")
+                    errors = True
+
+    sprints = data.get("sprints", [])
+    if not sprints:
+        messages.append("Plan must include at least one sprint")
+        errors = True
+    elif isinstance(sprints, list):
+        for index, sprint in enumerate(sprints, start=1):
+            if not isinstance(sprint, dict):
+                messages.append(f"Sprint {index} must be a mapping")
+                errors = True
+                continue
+            for field_name in REQUIRED_SPRINT_FIELDS:
+                if field_name not in sprint:
+                    messages.append(f"Sprint {index} missing field: {field_name}")
+                    errors = True
+
     status_path = plan_dir / "status.yaml"
     if status_path.exists():
         try:
@@ -106,6 +157,26 @@ def validate_plan(plan_dir: Path) -> tuple[bool, list[str]]:
         if not phase:
             messages.append("status.yaml must include status.phase")
             errors = True
+
+        activation = status_data.get("activation", {})
+        if not isinstance(activation, dict):
+            messages.append("status.yaml activation section must be a mapping")
+            errors = True
+        else:
+            for field_name in ["activated_at", "git_branch", "git_head", "baseline_changed_files", "baseline_fingerprints"]:
+                if field_name not in activation:
+                    messages.append(f"status.yaml activation missing field: {field_name}")
+                    errors = True
+
+        verification = status_data.get("verification", {})
+        if not isinstance(verification, dict):
+            messages.append("status.yaml verification section must be a mapping")
+            errors = True
+        else:
+            for field_name in ["passed", "last_run", "git_branch", "git_head", "changed_files", "fingerprints", "commands"]:
+                if field_name not in verification:
+                    messages.append(f"status.yaml verification missing field: {field_name}")
+                    errors = True
 
     if not errors:
         messages.append("Valid")

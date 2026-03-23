@@ -1,11 +1,52 @@
 data_models:
 
-  sales_fact:
-    owner: analytics
-    depends_on:
-      - database.sales_table
+  plan:
+    fields:
+      - plan.name
+      - plan.status
+      - plan.created
+      - plan.owner
+      - plan.priority
+      - objective
+      - scope
+      - phases
+      - backlog
+      - sprints
+      - risks
+      - dependencies
+      - done_when
+      - verify_commands
+      - rollback_strategy
+      - test_strategy
 
-  pricing_engine:
-    owner: services
-    depends_on:
-      - database.pricing_table
+  backlog_item:
+    fields:
+      - id
+      - title
+      - type
+      - phase
+      - scope
+      - depends_on
+      - deliverables
+      - tests
+      - done_when
+
+  sprint:
+    fields:
+      - id
+      - name
+      - goal
+      - backlog_items
+      - focus_paths
+      - exit_criteria
+
+  status:
+    fields:
+      - status.phase
+      - status.progress_percent
+      - activation
+      - verification
+      - completed_steps
+      - remaining_steps
+      - blockers
+      - handoff

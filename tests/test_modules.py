@@ -75,6 +75,10 @@ class GeneratePlanTests(unittest.TestCase):
             self.assertEqual(data["objective"], "Test the generator")
             self.assertIn("done_when", data)
             self.assertIn("verify_commands", data)
+            self.assertIn("backlog", data)
+            self.assertIn("sprints", data)
+            self.assertGreaterEqual(len(data["backlog"]), 3)
+            self.assertGreaterEqual(len(data["sprints"]), 2)
 
     def test_generates_plan_with_done_when_and_verify(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -89,6 +93,26 @@ class GeneratePlanTests(unittest.TestCase):
             data = yaml.safe_load((plan_dir / "plan.yaml").read_text())
             self.assertEqual(data["done_when"], ["API returns 200", "All tests pass"])
             self.assertEqual(data["verify_commands"], ["pytest", "curl localhost:8000/health"])
+            validation_item = data["backlog"][-1]
+            self.assertEqual(validation_item["tests"], ["pytest", "curl localhost:8000/health"])
+            self.assertEqual(validation_item["done_when"], ["API returns 200", "All tests pass"])
+
+    def test_generates_scope_backlog_items(self) -> None:
+        with TemporaryDirectory() as tmp:
+            docs = Path(tmp) / "docs"
+            plan_dir = generate_plan(
+                name="scope breakdown",
+                objective="Test backlog structure",
+                scope_included=["src/api", "tests/api", "README.md"],
+                docs_dir=docs,
+            )
+            data = yaml.safe_load((plan_dir / "plan.yaml").read_text())
+            titles = [item["title"] for item in data["backlog"]]
+            self.assertTrue(any("src/api" in title for title in titles))
+            self.assertTrue(any("tests/api" in title for title in titles))
+            self.assertTrue(any("README.md" in title for title in titles))
+            implementation_sprints = [s for s in data["sprints"] if "Implementation slice" in s["name"]]
+            self.assertTrue(implementation_sprints)
 
     def test_registers_plan_in_active_plans(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -117,6 +141,8 @@ class ValidatePlanTests(unittest.TestCase):
                     "objective": "test",
                     "scope": {"included": ["src"]},
                     "phases": [{"name": "do it", "tasks": ["task"]}],
+                    "backlog": [],
+                    "sprints": [],
                     "risks": [],
                     "dependencies": [],
                 })
@@ -135,6 +161,8 @@ class ValidatePlanTests(unittest.TestCase):
                     "objective": "test",
                     "scope": {"included": ["src"]},
                     "phases": [{"name": "x", "tasks": ["y"]}],
+                    "backlog": [],
+                    "sprints": [],
                     "risks": [],
                     "dependencies": [],
                 })
@@ -152,6 +180,30 @@ class ValidatePlanTests(unittest.TestCase):
             ok, messages = validate_plan(plan_dir)
             self.assertFalse(ok)
             self.assertTrue(any("remaining_steps" in m for m in messages))
+
+    def test_missing_backlog_or_sprints_fail(self) -> None:
+        with TemporaryDirectory() as tmp:
+            docs = Path(tmp) / "docs"
+            plan_dir = generate_plan(name="shape check", objective="test", docs_dir=docs)
+            data = yaml.safe_load((plan_dir / "plan.yaml").read_text())
+            del data["backlog"]
+            del data["sprints"]
+            (plan_dir / "plan.yaml").write_text(yaml.safe_dump(data), encoding="utf-8")
+            ok, messages = validate_plan(plan_dir)
+            self.assertFalse(ok)
+            self.assertTrue(any("backlog" in m for m in messages))
+            self.assertTrue(any("sprints" in m for m in messages))
+
+    def test_incomplete_backlog_item_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            docs = Path(tmp) / "docs"
+            plan_dir = generate_plan(name="backlog fields", objective="test", docs_dir=docs)
+            data = yaml.safe_load((plan_dir / "plan.yaml").read_text())
+            data["backlog"][0].pop("tests")
+            (plan_dir / "plan.yaml").write_text(yaml.safe_dump(data), encoding="utf-8")
+            ok, messages = validate_plan(plan_dir)
+            self.assertFalse(ok)
+            self.assertTrue(any("Backlog item 1 missing field: tests" in m for m in messages))
 
 
 class CollisionDetectionTests(unittest.TestCase):

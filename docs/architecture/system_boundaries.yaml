@@ -1,38 +1,36 @@
 systems:
 
-  database:
+  planning:
     paths:
-      - src/db
-      - migrations
+      - planguard/planning
+      - docs/planning
+      - docs/architecture
 
-    downstream_dependencies:
-      - services
-      - analytics
+    downstream:
+      - orchestration
+      - validation
 
-  services:
+  safety:
     paths:
-      - src/services
+      - planguard/safety
+      - .planguard
 
-    downstream_dependencies:
-      - api
+    downstream:
+      - orchestration
+      - validation
 
-  api:
+  orchestration:
     paths:
-      - src/api
+      - planguard/orchestration
 
-    downstream_dependencies:
-      - ui
-      - integrations
+    downstream:
+      - validation
 
-  analytics:
+  validation:
     paths:
-      - analytics
-      - models
+      - planguard/validation
+      - tests
 
-  ui:
+  context:
     paths:
-      - src/ui
-
-  integrations:
-    paths:
-      - src/integrations
+      - planguard/context

@@ -1,8 +1,18 @@
 # PlanGuard
 
-Control how AI coding agents make changes in your project.
+Plan and control how AI coding agents make changes in your project.
 
-PlanGuard makes AI-assisted development safer without turning it into paperwork. It records intent up front, then enforces the controls that matter against the real git-backed working state: scope drift, protected areas, verification, and an auditable lifecycle log.
+PlanGuard is a lightweight framework for AI-assisted development. It helps a developer or agent define the work first, approve the scope, implement against that plan, and prove the result before closing the change.
+
+In practice, the workflow is:
+
+1. Run `planguard init` to add project context and agent rules to the repo.
+2. Create a plan with `planguard plan`, then review the generated scope, backlog, sprints, risks, and verification commands. See [Ask the Agent to Create the Plan](#ask-the-agent-to-create-the-plan).
+3. Run `planguard check` and `planguard activate <plan_name>`. See [Running Checks](#running-checks).
+4. Only after activation should you start prompting the agent to implement. For the detailed rules and the first implementation prompt, see [When the Agent Is Allowed to Change Code](#when-the-agent-is-allowed-to-change-code) and [Activate the Plan and Implement](#activate-the-plan-and-implement).
+5. Run `planguard verify <plan_name>` and `planguard complete <plan_name>` to record the proof and close the work. See [Activate the Plan and Implement](#activate-the-plan-and-implement).
+
+The framework stays tied to git, your IDE, and your normal CLI workflow. Its main controls are scope enforcement, protected-area checks, verification, and an auditable lifecycle log.
 
 Works with any language or stack. Runs on Linux, macOS, and Windows.
 
@@ -55,27 +65,40 @@ planguard --help
 planguard --version
 ```
 
-## Adding to an Existing Project
+## End-to-End Workflow
 
-### Step 1: Navigate to your project
+PlanGuard is meant to fit around normal git and IDE work. The sequence is:
+
+1. Put PlanGuard into the repo.
+2. Give the agent enough context to plan safely.
+3. Have the agent create or refine a plan.
+4. Review the plan.
+5. Run `planguard check`.
+6. Run `planguard activate <plan_name>`.
+7. Only after activation may the agent change code or docs in scope.
+8. Run `planguard verify <plan_name>`.
+9. Run `planguard complete <plan_name>`.
+
+If you skip the planning or activation steps, the agent should not implement.
+
+## Put PlanGuard in an Existing Project
+
+### Step 1: Open the repository
 
 ```bash
 cd /path/to/your-project
 ```
 
-### Step 2: Run init
+### Step 2: Initialize PlanGuard
 
 ```bash
 planguard init
 ```
 
 The wizard:
-1. **Scans your project** — detects language, frameworks, source/test directories, build/test/lint commands, git status, CI/CD config
-2. **Shows what it found** and asks you to confirm
-3. **Creates three things:**
-   - `docs/` — where plans will live
-   - `.planguard/` — project context that agents read before working
-   - `AGENTS.md` — workflow rules (appended if the file already exists)
+1. Scans your repo for language, framework, source paths, test paths, build/test/lint commands, git status, and CI config.
+2. Shows what it detected so you can confirm or correct it.
+3. Writes the framework files the agent will use.
 
 **What gets added to your repo:**
 
@@ -87,37 +110,72 @@ your-project/
     conventions.md                   <-- coding patterns and style rules
     boundaries.md                    <-- files/dirs agents must never modify
     glossary.md                      <-- domain terms mapped to code entities
-    policies.yaml                    <-- governance rules (pattern-based checks)
+    policies.yaml                    <-- governance rules
   docs/
     planning/
       active_plans.yaml              <-- plan registry
   ... your existing files unchanged
 ```
 
-The `.planguard/` context files are generated with your detected stack pre-filled, but you should review and complete them. The boundaries and conventions files are especially important — they tell agents what's off-limits and what patterns to follow.
+### Step 3: Review the generated context
 
-If AGENTS.md already exists, PlanGuard appends its section (marked with an HTML comment for idempotent re-runs). Your existing rules stay intact.
+Before asking an agent to plan or code, review:
+- `.planguard/project.yaml`
+- `.planguard/conventions.md`
+- `.planguard/boundaries.md`
+- `.planguard/policies.yaml`
+- `AGENTS.md`
 
-### Step 3: Commit the framework files
+This is where you tell the agent what the system does, what patterns to follow, and what must not be changed.
+
+### Step 4: Commit the framework files
 
 ```bash
-git add AGENTS.md docs/
+git add AGENTS.md .planguard docs/
 git commit -m "Add PlanGuard"
 ```
 
-Now every AI agent that reads `AGENTS.md` (Claude, Codex, Copilot Workspace, etc.) will see the workflow rules before it starts coding.
+From this point on, any agent that reads `AGENTS.md` can follow the same workflow rules.
 
-## Starting a New Project
+## Put PlanGuard in a New Project
+
+### Step 1: Create the repository
 
 ```bash
-mkdir my-new-project && cd my-new-project
+mkdir my-new-project
+cd my-new-project
 git init
+```
+
+### Step 2: Initialize PlanGuard
+
+```bash
 planguard init
 ```
 
-The wizard detects an empty project and asks what language/stack you plan to use. It creates the same `docs/` and `AGENTS.md` structure.
+In a new repo, the wizard will ask what stack or language you expect to use and create the same `.planguard/`, `docs/`, and `AGENTS.md` structure.
 
-## Creating a Plan
+### Step 3: Fill in the project context
+
+For a new project, this step matters more because there is less code for the agent to infer from. Add enough detail that the first plan can be grounded in reality:
+- system purpose
+- main modules or layers you expect
+- naming and code conventions
+- directories the agent must never touch
+- required tests and quality gates
+
+### Step 4: Commit the framework files
+
+```bash
+git add AGENTS.md .planguard docs/
+git commit -m "Initialize PlanGuard project context"
+```
+
+## Ask the Agent to Create the Plan
+
+PlanGuard expects the agent to plan before it edits. You can either run the plan wizard yourself or ask the agent to do it.
+
+### Option 1: You run the wizard
 
 ```bash
 planguard plan
@@ -139,14 +197,35 @@ The wizard walks you through:
 
 The wizard creates two files:
 
-- `docs/<plan_name>/plan.yaml` — objective, scope, phases, risks, dependencies, test strategy
+- `docs/<plan_name>/plan.yaml` — objective, scope, phases, backlog, sprints, risks, dependencies, test strategy
 - `docs/<plan_name>/status.yaml` — progress tracking and handoff notes
 
-**Agents and scripts** can skip the wizard by passing flags:
+PlanGuard now treats that backlog-and-sprints shape as the required plan format. Older plan-only layouts are not supported.
+
+### Option 2: The agent runs the command
+
+Tell the agent to read `AGENTS.md` and create the plan before making changes. Example:
+
+```text
+Read AGENTS.md and the .planguard context. Create a PlanGuard plan for "add JWT authentication to the API". Propose scope, backlog items, sprints, risks, done criteria, and verification commands. Do not change application code yet.
+```
+
+If the agent already knows the objective and likely scope, it can skip the wizard:
 
 ```bash
 planguard plan "your plan name" --objective "Describe the goal" --scope "src/api, tests" --priority high --no-wizard
 ```
+
+### What the developer should review before approving the plan
+
+Open `docs/<plan_name>/plan.yaml` and confirm:
+- the objective is correct
+- the scope only includes the files and directories you want touched
+- the backlog and sprints are broken into sensible slices
+- the risks are real and not generic filler
+- the verification commands will actually prove the change works
+
+Until this review is done, the agent should still be in planning mode, not implementation mode.
 
 ## Running Checks
 
@@ -183,15 +262,38 @@ Check a specific plan:
 planguard check your_plan_name
 ```
 
-## Activating and Implementing
+## When the Agent Is Allowed to Change Code
 
-When checks pass:
+The answer should be simple:
+
+- Before `planguard activate <plan_name>`: the agent may read files, analyze the repo, and create or refine the plan.
+- After `planguard activate <plan_name>`: the agent may implement, but only inside the declared scope.
+
+Activation is the point where planning ends and implementation is allowed.
+
+## Activate the Plan and Implement
 
 ```bash
 planguard activate your_plan_name
 ```
 
-This re-runs checks, then marks the plan as active. The agent can now implement.
+This re-runs checks, records the git-backed baseline, and marks the plan as active.
+
+Only at this stage should you start prompting the agent to implement the change. The first implementation prompt should tell the agent to work from the approved plan, stay inside scope, update tests, and report what it changed.
+
+Example initial implementation prompt:
+
+```text
+The plan is now active. Implement the approved work for <plan_name>. Only modify files inside the declared scope, update or add tests as needed, run the relevant checks, and summarize what changed and anything still pending.
+```
+
+What to do next:
+
+1. Open the files listed in the plan scope.
+2. Let the agent implement only that planned slice of work.
+3. Run the normal edit, test, and diff loop in your IDE or CLI.
+4. If the agent needs to touch files outside scope, stop and update the plan first.
+5. Run `planguard check your_plan_name` again before verification.
 
 After implementation:
 
@@ -219,16 +321,17 @@ python -m twine check dist/*
 ## Workflow
 
 ```
-planguard init  -->  planguard plan  -->  planguard check  -->  planguard activate  -->  implement  -->  planguard check  -->  planguard verify  -->  planguard complete
+install PlanGuard  -->  planguard init  -->  create/refine plan  -->  planguard check  -->  planguard activate  -->  agent implements in scope  -->  planguard check  -->  planguard verify  -->  planguard complete
 ```
 
 | Step | What happens |
 |------|-------------|
-| `planguard init` | Detects project, creates docs/, .planguard/ context, and AGENTS.md |
-| `planguard plan` | Wizard creates plan.yaml and status.yaml |
-| `planguard check` | Validates structure, dependencies, declared scope, and for active plans enforces real post-activation changes against scope/policies/boundaries |
-| `planguard activate` | Runs checks, records a baseline git snapshot, marks plan as ready to implement |
-| implement | The agent (or you) writes code within the plan's scope |
+| install PlanGuard | Install the `planguard` CLI with `pipx`, `pip`, or Poetry |
+| `planguard init` | Detects the project, creates `.planguard/` context, creates `docs/`, and writes `AGENTS.md` rules |
+| create/refine plan | The developer or agent creates `plan.yaml` and `status.yaml`; the agent may analyze but must not implement yet |
+| `planguard check` | Validates structure, dependencies, scope, and for active plans enforces real changes against scope, policies, and boundaries |
+| `planguard activate` | Re-runs checks, records a baseline git snapshot, and explicitly allows implementation |
+| agent implements in scope | The agent may now change code, tests, or docs, but only in the declared scope |
 | `planguard verify` | Runs verification commands and stores the exact snapshot that passed |
 | `planguard complete` | Marks plan as done only if the verified snapshot still matches the current state |
 
@@ -310,6 +413,82 @@ phases:
   - name: validation
     tasks:
       - Run regression tests
+
+backlog:
+  - id: BL-001
+    title: Analyze scope, architecture touchpoints, and test impact
+    type: analysis
+    phase: analysis
+    scope:
+      - src/your_module
+      - tests/your_module
+    depends_on: []
+    deliverables:
+      - Impacted modules and dependencies are identified
+    tests:
+      - Identify the regression coverage that must be preserved before coding begins
+    done_when:
+      - The implementation approach is clear
+
+  - id: BL-002
+    title: Implement changes in src/your_module
+    type: implementation
+    phase: implementation
+    scope:
+      - src/your_module
+    depends_on: [BL-001]
+    deliverables:
+      - Code changes in src/your_module are implemented in safe, reviewable slices
+    tests:
+      - Add or update focused regression tests covering src/your_module
+    done_when:
+      - The planned work for src/your_module is complete
+
+  - id: BL-003
+    title: Run verification, regression checks, and handoff review
+    type: validation
+    phase: validation
+    scope:
+      - src/your_module
+      - tests/your_module
+    depends_on: [BL-002]
+    deliverables:
+      - Verification commands pass
+    tests:
+      - npm test
+      - npm run lint
+    done_when:
+      - All tests pass
+
+sprints:
+  - id: SPRINT-01
+    name: Discovery and test design
+    goal: Confirm scope, architecture impact, and required regression coverage before implementation starts.
+    backlog_items: [BL-001]
+    focus_paths:
+      - src/your_module
+      - tests/your_module
+    exit_criteria:
+      - The implementation approach is clear
+
+  - id: SPRINT-02
+    name: Implementation slice 1
+    goal: Deliver a reviewable subset of the planned change set with matching test updates.
+    backlog_items: [BL-002]
+    focus_paths:
+      - src/your_module
+    exit_criteria:
+      - The planned work for src/your_module is complete
+
+  - id: SPRINT-03
+    name: Verification and handoff
+    goal: Prove the change set works, document residual risk, and prepare completion.
+    backlog_items: [BL-003]
+    focus_paths:
+      - src/your_module
+      - tests/your_module
+    exit_criteria:
+      - All tests pass
 
 risks:
   - id: RISK-001

@@ -245,7 +245,19 @@ def _verification_matches_current_state(plan_dir: Path) -> bool:
     if expected_head and expected_head != current.get("git_head", ""):
         return False
 
-    return verification.get("fingerprints", {}) == current.get("fingerprints", {})
+    ignored = _plan_bookkeeping_files(plan_dir)
+    expected = {
+        path: fingerprint
+        for path, fingerprint in verification.get("fingerprints", {}).items()
+        if path not in ignored
+    }
+    current_fingerprints = {
+        path: fingerprint
+        for path, fingerprint in current.get("fingerprints", {}).items()
+        if path not in ignored
+    }
+
+    return expected == current_fingerprints
 
 
 def _default_verify_commands(info) -> list[str]:

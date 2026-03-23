@@ -39,10 +39,14 @@ After implementation, agents must:
 - Always document risks and test strategy before coding
 - Never complete a plan without a passing verification run
 - Update handoff notes when the work is done
+- Always add any handoff document you create to `.gitignore`
+- When changing the package version, always keep package metadata and runtime version reporting in sync
 
 ### Best Practices
 
 - Read existing code before proposing changes
+- Use a local `HANDOFF*.md` file for temporary transition notes when needed
+- For releases, update both `pyproject.toml` and `planguard/__init__.py` together
 - Write or update tests for every change
 - Run the test suite and confirm it passes before marking work complete
 - Keep changes small, scoped, and independently verifiable

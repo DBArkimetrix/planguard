@@ -1,0 +1,142 @@
+status:
+  phase: completed
+  progress_percent: 100
+activation:
+  activated_at: '2026-03-23T22:02:48.522476+00:00'
+  git_branch: main
+  git_head: ad1357bd9188d02881cdb2a2d6530dda678bf2f4
+  baseline_changed_files:
+  - .gitignore
+  - .planguard/log.jsonl
+  - AGENTS.md
+  - README.md
+  - dist/planguard-0.3.0-py3-none-any.whl
+  - dist/planguard-0.3.0.tar.gz
+  - docs/agents_version_sync_rule
+  - docs/architecture/data_models.yaml
+  - docs/architecture/system_boundaries.yaml
+  - docs/architecture/system_overview.yaml
+  - docs/backlog_and_sprint_generation
+  - docs/handoff_doc_gitignore
+  - docs/new_format_only_enforcement
+  - docs/planning/active_plans.yaml
+  - docs/readme_agent_prompt_clarification
+  - docs/readme_intro_section_refs
+  - docs/readme_intro_summary
+  - docs/readme_post_activation_clarification
+  - docs/readme_workflow_rewrite
+  - docs/version_bump_0_4
+  - planguard/__init__.py
+  - planguard/cli.py
+  - planguard/planning/build_work_breakdown.py
+  - planguard/planning/generate_plan.py
+  - planguard/validation/validate_plan.py
+  - pyproject.toml
+  - tests/test_modules.py
+  baseline_fingerprints:
+    .gitignore: 75676eaead0c275dc4fc89a60d3291b7371d502e8a756a8fe8e23616da2fc13e
+    .planguard/log.jsonl: fd68eebf88237e8938bea64c2e7e0e4dff462889ac701c6cadfb1f2d1aa688ea
+    AGENTS.md: 32935ac0875f74dca91f6ec7f43ff6bbd38bfd30938e7783441fdd57c4c51425
+    README.md: 99228e0a633f9fc9b1e963b363356bc497df263095603a321680bbf62b858f84
+    dist/planguard-0.3.0-py3-none-any.whl: 7d9d78fcafe5402141d1171c3a7dd14c2d039680597e154e08cd5763ac1d848a
+    dist/planguard-0.3.0.tar.gz: e5658af559e8bd067e75b73ce6c0f875c6fb78c5dff035bb0baf85de57838071
+    docs/agents_version_sync_rule: MISSING
+    docs/architecture/data_models.yaml: 2d8e9abbc41b861adffd54a9d8996bccebc46c01694939479f4178be59163b0b
+    docs/architecture/system_boundaries.yaml: 903c5cdf081b4b82d2341551f865a7fa0f36e33ffe9e3420b5e48b313269067a
+    docs/architecture/system_overview.yaml: efb386282dab08d56f1ea74f19997c1da018059de1fc85181864cdd63efd4da6
+    docs/backlog_and_sprint_generation: MISSING
+    docs/handoff_doc_gitignore: MISSING
+    docs/new_format_only_enforcement: MISSING
+    docs/planning/active_plans.yaml: f969ffe85f8b9d72c6dd9e7d4a9615bf99f1b3ea8ae467d28b2a42598e85a811
+    docs/readme_agent_prompt_clarification: MISSING
+    docs/readme_intro_section_refs: MISSING
+    docs/readme_intro_summary: MISSING
+    docs/readme_post_activation_clarification: MISSING
+    docs/readme_workflow_rewrite: MISSING
+    docs/version_bump_0_4: MISSING
+    planguard/__init__.py: 5d2ee3a24271c2de49cf59baec78c2a09b8890e5f1a59ab4cb5eb0ce1af1a4f5
+    planguard/cli.py: dc5da01362fb2b8dab755f840a8c2c655cb2d38f138a05ae4920aebd7b9a4317
+    planguard/planning/build_work_breakdown.py: 48fb884baa168cdd32cd6673416fc225b2370d9660a549d2c298521fe97326da
+    planguard/planning/generate_plan.py: 7058db18a64b998f301c21fc439be171af68efacfc8f57c2b1ce27303c6e9223
+    planguard/validation/validate_plan.py: 2d01ac24f09532bf8a772f499bc1685426fe75dc67be57a9d50a5bd3812d3a76
+    pyproject.toml: ca36cca8488c774109c3790cbb2006b4d6aa03075cf0901173c3c8a430f4bcfb
+    tests/test_modules.py: 1c179457a7decae3e1e30fdc7bacc9b0fa9f1fee49839f6caab810e272ed76db
+verification:
+  passed: true
+  last_run: '2026-03-23T22:03:12.608306+00:00'
+  git_branch: main
+  git_head: ad1357bd9188d02881cdb2a2d6530dda678bf2f4
+  changed_files:
+  - .gitignore
+  - .planguard/log.jsonl
+  - AGENTS.md
+  - README.md
+  - dist/planguard-0.3.0-py3-none-any.whl
+  - dist/planguard-0.3.0.tar.gz
+  - docs/agents_version_sync_rule
+  - docs/architecture/data_models.yaml
+  - docs/architecture/system_boundaries.yaml
+  - docs/architecture/system_overview.yaml
+  - docs/backlog_and_sprint_generation
+  - docs/handoff_doc_gitignore
+  - docs/new_format_only_enforcement
+  - docs/planning/active_plans.yaml
+  - docs/readme_agent_prompt_clarification
+  - docs/readme_intro_section_refs
+  - docs/readme_intro_summary
+  - docs/readme_post_activation_clarification
+  - docs/readme_workflow_rewrite
+  - docs/version_bump_0_4
+  - planguard/__init__.py
+  - planguard/cli.py
+  - planguard/planning/build_work_breakdown.py
+  - planguard/planning/generate_plan.py
+  - planguard/validation/validate_plan.py
+  - pyproject.toml
+  - tests/test_modules.py
+  fingerprints:
+    .gitignore: 75676eaead0c275dc4fc89a60d3291b7371d502e8a756a8fe8e23616da2fc13e
+    .planguard/log.jsonl: 11588bd531f05dea9dd15ab7586bf8dd82614e5b5ff2ef525e8cc394fb32757a
+    AGENTS.md: b6490dabb36887fb55d504005efb0e7814a9334015b3d959ad5bd50a2fe91742
+    README.md: 99228e0a633f9fc9b1e963b363356bc497df263095603a321680bbf62b858f84
+    dist/planguard-0.3.0-py3-none-any.whl: 7d9d78fcafe5402141d1171c3a7dd14c2d039680597e154e08cd5763ac1d848a
+    dist/planguard-0.3.0.tar.gz: e5658af559e8bd067e75b73ce6c0f875c6fb78c5dff035bb0baf85de57838071
+    docs/agents_version_sync_rule: MISSING
+    docs/architecture/data_models.yaml: 2d8e9abbc41b861adffd54a9d8996bccebc46c01694939479f4178be59163b0b
+    docs/architecture/system_boundaries.yaml: 903c5cdf081b4b82d2341551f865a7fa0f36e33ffe9e3420b5e48b313269067a
+    docs/architecture/system_overview.yaml: efb386282dab08d56f1ea74f19997c1da018059de1fc85181864cdd63efd4da6
+    docs/backlog_and_sprint_generation: MISSING
+    docs/handoff_doc_gitignore: MISSING
+    docs/new_format_only_enforcement: MISSING
+    docs/planning/active_plans.yaml: f969ffe85f8b9d72c6dd9e7d4a9615bf99f1b3ea8ae467d28b2a42598e85a811
+    docs/readme_agent_prompt_clarification: MISSING
+    docs/readme_intro_section_refs: MISSING
+    docs/readme_intro_summary: MISSING
+    docs/readme_post_activation_clarification: MISSING
+    docs/readme_workflow_rewrite: MISSING
+    docs/version_bump_0_4: MISSING
+    planguard/__init__.py: 5d2ee3a24271c2de49cf59baec78c2a09b8890e5f1a59ab4cb5eb0ce1af1a4f5
+    planguard/cli.py: dc5da01362fb2b8dab755f840a8c2c655cb2d38f138a05ae4920aebd7b9a4317
+    planguard/planning/build_work_breakdown.py: 48fb884baa168cdd32cd6673416fc225b2370d9660a549d2c298521fe97326da
+    planguard/planning/generate_plan.py: 7058db18a64b998f301c21fc439be171af68efacfc8f57c2b1ce27303c6e9223
+    planguard/validation/validate_plan.py: 2d01ac24f09532bf8a772f499bc1685426fe75dc67be57a9d50a5bd3812d3a76
+    pyproject.toml: ca36cca8488c774109c3790cbb2006b4d6aa03075cf0901173c3c8a430f4bcfb
+    tests/test_modules.py: 1c179457a7decae3e1e30fdc7bacc9b0fa9f1fee49839f6caab810e272ed76db
+  commands:
+  - poetry run pytest tests/ -v
+completed_steps:
+- Review and refine plan
+- Run checks (planguard check)
+- Activate plan (planguard activate)
+- Implement
+- Verify (planguard verify)
+- Complete plan (planguard complete)
+remaining_steps: []
+blockers: []
+handoff:
+  summary: AGENTS.md now requires version-sync updates when the package version changes.
+  notes:
+  - Added a rule requiring package metadata and runtime version reporting to stay
+    in sync.
+  - Added a best-practice note to update pyproject.toml and planguard/__init__.py
+    together for releases.

@@ -4,10 +4,10 @@
 
 components:
   - name: planning
-    responsibility: plans, backlog, sprint sequencing
+    responsibility: turns scope and objectives into plans with phases, backlog items, sprint slices, and test expectations
   - name: safety
-    responsibility: risk scoring and gating
+    responsibility: risk scoring, scope enforcement, and policy/boundary gating
   - name: orchestration
-    responsibility: dependency and collision management
+    responsibility: dependency and collision management across plans and execution slices
   - name: validation
-    responsibility: script-based verification of rules
+    responsibility: structure validation and verification workflow state

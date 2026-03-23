@@ -1,3 +1,23 @@
 active_plans:
 - name: diff_based_safety_and_pypi_hardening
   status: completed
+- name: readme_post_activation_clarification
+  status: completed
+- name: backlog_and_sprint_generation
+  status: completed
+- name: new_format_only_enforcement
+  status: completed
+- name: readme_workflow_rewrite
+  status: completed
+- name: readme_intro_summary
+  status: completed
+- name: handoff_doc_gitignore
+  status: completed
+- name: readme_agent_prompt_clarification
+  status: completed
+- name: readme_intro_section_refs
+  status: completed
+- name: version_bump_0_4
+  status: completed
+- name: agents_version_sync_rule
+  status: completed
