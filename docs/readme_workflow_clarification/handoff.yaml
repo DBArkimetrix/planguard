@@ -1,9 +1,0 @@
-handoff:
-  summary: README updated with explicit guidance on what `AGENTS.md` should say and where it should live in a target repository.
-current_state:
-  implementation_complete: true
-  safety_gate_passed: true
-  orchestration_ready: true
-next_actions:
-  - revisit the README if CLI enforcement semantics change in a future release
-  - keep the `AGENTS.md` example aligned with the recommended workflow

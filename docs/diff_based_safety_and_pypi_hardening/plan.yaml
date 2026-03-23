@@ -1,0 +1,54 @@
+plan:
+  name: diff_based_safety_and_pypi_hardening
+  status: completed
+  created: '2026-03-23'
+  owner: codex
+  priority: high
+objective: Replace paper gates with enforceable diff-based safety checks and harden
+  the project as a distributable PyPI package
+scope:
+  included:
+  - planguard
+  - tests
+  - README.md
+  - AGENTS.md
+  - pyproject.toml
+  - requirements.txt
+  - dist
+  excluded:
+  - unrelated modules
+phases:
+- name: analysis
+  tasks:
+  - Analyze current implementation
+  - Identify dependencies and risks
+- name: implementation
+  tasks:
+  - Implement changes in safe, testable slices
+- name: validation
+  tasks:
+  - Run tests and review for regressions
+risks:
+- id: RISK-001
+  description: Regression impact on existing behaviour
+  severity: medium
+  mitigation: Add targeted regression tests before changing code
+dependencies:
+- id: analysis
+  depends_on: []
+- id: implementation
+  depends_on:
+  - analysis
+- id: validation
+  depends_on:
+  - implementation
+done_when:
+- All tests pass
+- No regressions in existing functionality
+verify_commands:
+- poetry run pytest tests/ -v
+- poetry build
+rollback_strategy: git revert to prior commit
+test_strategy:
+- area: Existing functionality in scope paths
+  validation: Confirm no unintended behaviour changes

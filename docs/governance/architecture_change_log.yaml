@@ -1,5 +1,0 @@
-﻿architecture_changes:
-  - id: ARCH-001
-    date: 2026-03-11
-    change: introduced framework v3 automation layer
-    reason: add enforcement, not just scaffolding

@@ -1,12 +1,12 @@
-﻿name: Agent Guard
+name: PlanGuard
 
 on:
   pull_request:
   push:
-    branches: [ main, master ]
+    branches: [main]
 
 jobs:
-  validate-framework:
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,17 +15,11 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - name: Install PlanGuard
+        run: pip install -e .
 
-      - name: Validate example plan
-        run: python scripts/validate_plan.py docs/example_plan
+      - name: Run checks
+        run: planguard check
 
-      - name: Compute risk score
-        run: python scripts/compute_risk_score.py
-
-      - name: Show plan DAG
-        run: python scripts/compute_plan_dag.py
-
-      - name: Show ownership map
-        run: python scripts/check_file_ownership.py
+      - name: Run tests
+        run: pytest tests/ -v

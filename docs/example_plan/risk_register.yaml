@@ -1,4 +1,0 @@
-﻿risks:
-  - id: RISK-001
-    description: regression impact on workflow
-    mitigation: add and run regression tests before merge

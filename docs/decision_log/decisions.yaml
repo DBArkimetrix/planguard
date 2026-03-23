@@ -1,6 +1,0 @@
-﻿decisions:
-  - id: DEC-001
-    date: 2026-03-11
-    topic: framework_version
-    decision: adopt agent framework v3 with validation automation
-    reason: reduce regressions and improve multi-agent coordination

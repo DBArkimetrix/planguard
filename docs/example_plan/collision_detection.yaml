@@ -1,6 +1,0 @@
-﻿collision_checks:
-  - check: overlapping file modifications
-  - check: schema conflicts
-  - check: endpoint contract conflicts
-  - check: service boundary violations
-  - check: unintended downstream consequences

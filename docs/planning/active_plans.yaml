@@ -1,13 +1,3 @@
 active_plans:
-  - name: readme_plain_language
-    status: completed
-    owner: codex
-  - name: readme_poetry_refresh
-    status: completed
-    owner: codex
-  - name: package_repair
-    status: completed
-    owner: codex
-  - name: readme_workflow_clarification
-    status: completed
-    owner: codex
+- name: diff_based_safety_and_pypi_hardening
+  status: completed

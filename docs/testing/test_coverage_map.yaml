@@ -1,8 +1,0 @@
-﻿coverage:
-  modules:
-    - name: planning
-      required_percent: 80
-    - name: safety
-      required_percent: 85
-    - name: orchestration
-      required_percent: 85

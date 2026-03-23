@@ -1,5 +1,0 @@
-﻿file_ownership:
-  - area: src/db/migrations
-    primary_owner_plan: shared_schema_update
-  - area: src/api
-    primary_owner_plan: example_plan

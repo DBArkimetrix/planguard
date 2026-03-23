@@ -1,9 +1,0 @@
-dependencies:
-  - id: readme_review
-    depends_on: []
-    impact: identifies where the current README fails non-technical readers
-
-  - id: plain_language_rewrite
-    depends_on:
-      - readme_review
-    impact: makes the framework's purpose and operating model understandable to non-programmers

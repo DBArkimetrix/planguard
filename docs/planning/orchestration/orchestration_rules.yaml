@@ -1,5 +1,0 @@
-﻿orchestration_rules:
-  - all plans must be registered before implementation
-  - unresolved dependencies block implementation
-  - overlapping file, schema, endpoint, or module changes require collision review
-  - only non-overlapping plans may run in parallel

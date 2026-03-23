@@ -1,6 +1,0 @@
-execution_schedule:
-  phase_1:
-  - readme_plain_language
-  - readme_poetry_refresh
-  - package_repair
-  - readme_workflow_clarification

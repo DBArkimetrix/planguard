@@ -1,6 +1,0 @@
-regression_tests:
-  - area: README workflow instructions
-    validation: confirm the documented command sequence matches the current CLI and scripts
-
-  - area: existing-project integration guidance
-    validation: confirm the `AGENTS.md` placement guidance is consistent with root-level agent instruction loading

@@ -1,0 +1,280 @@
+status:
+  phase: completed
+  progress_percent: 100
+activation:
+  activated_at: '2026-03-23T00:00:00+00:00'
+  git_branch: ''
+  git_head: ''
+  baseline_changed_files: []
+  baseline_fingerprints: {}
+verification:
+  passed: true
+  last_run: '2026-03-23T20:28:57.748880+00:00'
+  git_branch: main
+  git_head: d1dd734859cec61acb48b3433f5a24caffa240fa
+  changed_files:
+  - .github/workflows/agent-guard.yml
+  - .github/workflows/agent-multi-plan-guard.yml
+  - .github/workflows/agent-pr-guard.yml
+  - .planguard
+  - .pre-commit-config.yaml
+  - AGENTS.md
+  - CLAUDE.md
+  - README.md
+  - agent_framework/__init__.py
+  - agent_framework/architecture/__init__.py
+  - agent_framework/architecture/analyze_change_impact.py
+  - agent_framework/architecture/generate_architecture_diagram.py
+  - agent_framework/cli.py
+  - agent_framework/orchestration/__init__.py
+  - agent_framework/orchestration/build_execution_schedule.py
+  - agent_framework/orchestration/detect_collisions.py
+  - agent_framework/orchestration/plan_graph.py
+  - agent_framework/planning/__init__.py
+  - agent_framework/planning/generate_plan.py
+  - agent_framework/safety/__init__.py
+  - agent_framework/safety/compute_risk_score.py
+  - agent_framework/utils/__init__.py
+  - agent_framework/validation/__init__.py
+  - agent_framework/validation/validate_plan.py
+  - dist/agent_engineering_framework-0.1.0-py3-none-any.whl
+  - dist/agent_engineering_framework-0.1.0.tar.gz
+  - dist/planguard-0.3.0-py3-none-any.whl
+  - dist/planguard-0.3.0.tar.gz
+  - docs/architecture/system_overview.yaml
+  - docs/contracts/integration_contracts.yaml
+  - docs/decision_log/decisions.yaml
+  - docs/diff_based_safety_and_pypi_hardening
+  - docs/example_plan/backlog.yaml
+  - docs/example_plan/collision_detection.yaml
+  - docs/example_plan/dependency_map.yaml
+  - docs/example_plan/handoff.yaml
+  - docs/example_plan/plan.yaml
+  - docs/example_plan/progress.yaml
+  - docs/example_plan/regression_test_plan.yaml
+  - docs/example_plan/risk_register.yaml
+  - docs/example_plan/sprint_plan.yaml
+  - docs/governance/agent_memory.yaml
+  - docs/governance/architecture_change_log.yaml
+  - docs/package_repair/backlog.yaml
+  - docs/package_repair/collision_detection.yaml
+  - docs/package_repair/dependency_map.yaml
+  - docs/package_repair/handoff.yaml
+  - docs/package_repair/plan.yaml
+  - docs/package_repair/progress.yaml
+  - docs/package_repair/regression_test_plan.yaml
+  - docs/package_repair/risk_register.yaml
+  - docs/package_repair/sprint_plan.yaml
+  - docs/planning/active_plans.yaml
+  - docs/planning/collision_registry.yaml
+  - docs/planning/execution_schedule.yaml
+  - docs/planning/graphs/plan_dependency_graph.yaml
+  - docs/planning/orchestration/file_ownership_map.yaml
+  - docs/planning/orchestration/interface_collision_matrix.yaml
+  - docs/planning/orchestration/orchestration_rules.yaml
+  - docs/planning/orchestration/orchestration_status.yaml
+  - docs/planning/orchestration/plan_dag.yaml
+  - docs/planning/plan_file_map.yaml
+  - docs/planning/registry/active_plans.yaml
+  - docs/planning/registry/plan_registry.yaml
+  - docs/readme_plain_language/backlog.yaml
+  - docs/readme_plain_language/collision_detection.yaml
+  - docs/readme_plain_language/dependency_map.yaml
+  - docs/readme_plain_language/handoff.yaml
+  - docs/readme_plain_language/plan.yaml
+  - docs/readme_plain_language/progress.yaml
+  - docs/readme_plain_language/regression_test_plan.yaml
+  - docs/readme_plain_language/risk_register.yaml
+  - docs/readme_plain_language/sprint_plan.yaml
+  - docs/readme_poetry_refresh/backlog.yaml
+  - docs/readme_poetry_refresh/collision_detection.yaml
+  - docs/readme_poetry_refresh/dependency_map.yaml
+  - docs/readme_poetry_refresh/handoff.yaml
+  - docs/readme_poetry_refresh/plan.yaml
+  - docs/readme_poetry_refresh/progress.yaml
+  - docs/readme_poetry_refresh/regression_test_plan.yaml
+  - docs/readme_poetry_refresh/risk_register.yaml
+  - docs/readme_poetry_refresh/sprint_plan.yaml
+  - docs/readme_workflow_clarification/backlog.yaml
+  - docs/readme_workflow_clarification/collision_detection.yaml
+  - docs/readme_workflow_clarification/dependency_map.yaml
+  - docs/readme_workflow_clarification/handoff.yaml
+  - docs/readme_workflow_clarification/plan.yaml
+  - docs/readme_workflow_clarification/progress.yaml
+  - docs/readme_workflow_clarification/regression_test_plan.yaml
+  - docs/readme_workflow_clarification/risk_register.yaml
+  - docs/readme_workflow_clarification/sprint_plan.yaml
+  - docs/safety/impact_surface_map.yaml
+  - docs/safety/plan_safety_gate.yaml
+  - docs/safety/plan_validation.yaml
+  - docs/safety/regression_risk_score.yaml
+  - docs/tasks/task_queue.yaml
+  - docs/testing/regression_matrix.yaml
+  - docs/testing/test_coverage_map.yaml
+  - planguard
+  - poetry.lock
+  - pyproject.toml
+  - requirements.txt
+  - scripts/analyze_change_impact.py
+  - scripts/build_execution_schedule.py
+  - scripts/check_file_ownership.py
+  - scripts/check_pr_changes.py
+  - scripts/compute_plan_dag.py
+  - scripts/compute_risk_score.py
+  - scripts/detect_collisions.py
+  - scripts/generate_architecture_diagram.py
+  - scripts/generate_plan.py
+  - scripts/init-git.ps1
+  - scripts/post_restructure_fix.ps1
+  - scripts/restructure_framework.ps1
+  - scripts/validate_active_plans.py
+  - scripts/validate_plan.py
+  - tests/test_cli.py
+  - tests/test_context.py
+  - tests/test_modules.py
+  - tests/test_plan_graph.py
+  - tests/test_scripts.py
+  fingerprints:
+    .github/workflows/agent-guard.yml: c57eddfeb302e031b5b5bdbd892f9a2b535393c8c8e2849b6709ae239bbb2d0c
+    .github/workflows/agent-multi-plan-guard.yml: MISSING
+    .github/workflows/agent-pr-guard.yml: MISSING
+    .planguard: MISSING
+    .pre-commit-config.yaml: 10cdb4f725ac2cd4216b9f54509a8e0dcd9e34c18fb3716d3f2e3db473357bf5
+    AGENTS.md: eefbd73bdf733db2f5f488cec79defc581dfb533d66a0cecff3bb42066d94be1
+    CLAUDE.md: 05d514779e0111bcc1f4dc21d8e351ca5e7ebce149921b3bd335d9ce40746eaf
+    README.md: fbca5dde134f9265873e7ad0f77c8070b8d401ab711a064538acdfef791d069f
+    agent_framework/__init__.py: MISSING
+    agent_framework/architecture/__init__.py: MISSING
+    agent_framework/architecture/analyze_change_impact.py: MISSING
+    agent_framework/architecture/generate_architecture_diagram.py: MISSING
+    agent_framework/cli.py: MISSING
+    agent_framework/orchestration/__init__.py: MISSING
+    agent_framework/orchestration/build_execution_schedule.py: MISSING
+    agent_framework/orchestration/detect_collisions.py: MISSING
+    agent_framework/orchestration/plan_graph.py: MISSING
+    agent_framework/planning/__init__.py: MISSING
+    agent_framework/planning/generate_plan.py: MISSING
+    agent_framework/safety/__init__.py: MISSING
+    agent_framework/safety/compute_risk_score.py: MISSING
+    agent_framework/utils/__init__.py: MISSING
+    agent_framework/validation/__init__.py: MISSING
+    agent_framework/validation/validate_plan.py: MISSING
+    dist/agent_engineering_framework-0.1.0-py3-none-any.whl: MISSING
+    dist/agent_engineering_framework-0.1.0.tar.gz: MISSING
+    dist/planguard-0.3.0-py3-none-any.whl: 84481d669f91fa8d5dd4198395dda29e68c42a339920012e76a80dad6832b9f9
+    dist/planguard-0.3.0.tar.gz: 393985b6c82bba075fe198492a0b8b2f27c09c3d2d1c4e5246944e2a31613d15
+    docs/architecture/system_overview.yaml: b28fe99666d36bdfc9b7d50e867242d7c78f9e391fe1b512cdddf3500e02e39e
+    docs/contracts/integration_contracts.yaml: MISSING
+    docs/decision_log/decisions.yaml: MISSING
+    docs/diff_based_safety_and_pypi_hardening: MISSING
+    docs/example_plan/backlog.yaml: MISSING
+    docs/example_plan/collision_detection.yaml: MISSING
+    docs/example_plan/dependency_map.yaml: MISSING
+    docs/example_plan/handoff.yaml: MISSING
+    docs/example_plan/plan.yaml: MISSING
+    docs/example_plan/progress.yaml: MISSING
+    docs/example_plan/regression_test_plan.yaml: MISSING
+    docs/example_plan/risk_register.yaml: MISSING
+    docs/example_plan/sprint_plan.yaml: MISSING
+    docs/governance/agent_memory.yaml: MISSING
+    docs/governance/architecture_change_log.yaml: MISSING
+    docs/package_repair/backlog.yaml: MISSING
+    docs/package_repair/collision_detection.yaml: MISSING
+    docs/package_repair/dependency_map.yaml: MISSING
+    docs/package_repair/handoff.yaml: MISSING
+    docs/package_repair/plan.yaml: MISSING
+    docs/package_repair/progress.yaml: MISSING
+    docs/package_repair/regression_test_plan.yaml: MISSING
+    docs/package_repair/risk_register.yaml: MISSING
+    docs/package_repair/sprint_plan.yaml: MISSING
+    docs/planning/active_plans.yaml: 9e9de922c8ce5e1f1025f4aa2f1627a6fc3ec9dcb7573d2deeb1f657e6404211
+    docs/planning/collision_registry.yaml: MISSING
+    docs/planning/execution_schedule.yaml: MISSING
+    docs/planning/graphs/plan_dependency_graph.yaml: MISSING
+    docs/planning/orchestration/file_ownership_map.yaml: MISSING
+    docs/planning/orchestration/interface_collision_matrix.yaml: MISSING
+    docs/planning/orchestration/orchestration_rules.yaml: MISSING
+    docs/planning/orchestration/orchestration_status.yaml: MISSING
+    docs/planning/orchestration/plan_dag.yaml: MISSING
+    docs/planning/plan_file_map.yaml: MISSING
+    docs/planning/registry/active_plans.yaml: MISSING
+    docs/planning/registry/plan_registry.yaml: MISSING
+    docs/readme_plain_language/backlog.yaml: MISSING
+    docs/readme_plain_language/collision_detection.yaml: MISSING
+    docs/readme_plain_language/dependency_map.yaml: MISSING
+    docs/readme_plain_language/handoff.yaml: MISSING
+    docs/readme_plain_language/plan.yaml: MISSING
+    docs/readme_plain_language/progress.yaml: MISSING
+    docs/readme_plain_language/regression_test_plan.yaml: MISSING
+    docs/readme_plain_language/risk_register.yaml: MISSING
+    docs/readme_plain_language/sprint_plan.yaml: MISSING
+    docs/readme_poetry_refresh/backlog.yaml: MISSING
+    docs/readme_poetry_refresh/collision_detection.yaml: MISSING
+    docs/readme_poetry_refresh/dependency_map.yaml: MISSING
+    docs/readme_poetry_refresh/handoff.yaml: MISSING
+    docs/readme_poetry_refresh/plan.yaml: MISSING
+    docs/readme_poetry_refresh/progress.yaml: MISSING
+    docs/readme_poetry_refresh/regression_test_plan.yaml: MISSING
+    docs/readme_poetry_refresh/risk_register.yaml: MISSING
+    docs/readme_poetry_refresh/sprint_plan.yaml: MISSING
+    docs/readme_workflow_clarification/backlog.yaml: MISSING
+    docs/readme_workflow_clarification/collision_detection.yaml: MISSING
+    docs/readme_workflow_clarification/dependency_map.yaml: MISSING
+    docs/readme_workflow_clarification/handoff.yaml: MISSING
+    docs/readme_workflow_clarification/plan.yaml: MISSING
+    docs/readme_workflow_clarification/progress.yaml: MISSING
+    docs/readme_workflow_clarification/regression_test_plan.yaml: MISSING
+    docs/readme_workflow_clarification/risk_register.yaml: MISSING
+    docs/readme_workflow_clarification/sprint_plan.yaml: MISSING
+    docs/safety/impact_surface_map.yaml: MISSING
+    docs/safety/plan_safety_gate.yaml: MISSING
+    docs/safety/plan_validation.yaml: MISSING
+    docs/safety/regression_risk_score.yaml: MISSING
+    docs/tasks/task_queue.yaml: MISSING
+    docs/testing/regression_matrix.yaml: MISSING
+    docs/testing/test_coverage_map.yaml: MISSING
+    planguard: MISSING
+    poetry.lock: 6839b04569246bce26c37e54a55e981c680e680a571014bbb12466e02cc86f52
+    pyproject.toml: 62e3d6a50d021e3f854aa8409bf05546bcfa740e0225cda7036797aa00c5d570
+    requirements.txt: 41c09b2c8d8da42ec2eb9e60b0d918e0dae91c746e73fdd632a91592637b950e
+    scripts/analyze_change_impact.py: MISSING
+    scripts/build_execution_schedule.py: MISSING
+    scripts/check_file_ownership.py: MISSING
+    scripts/check_pr_changes.py: MISSING
+    scripts/compute_plan_dag.py: MISSING
+    scripts/compute_risk_score.py: MISSING
+    scripts/detect_collisions.py: MISSING
+    scripts/generate_architecture_diagram.py: MISSING
+    scripts/generate_plan.py: MISSING
+    scripts/init-git.ps1: MISSING
+    scripts/post_restructure_fix.ps1: MISSING
+    scripts/restructure_framework.ps1: MISSING
+    scripts/validate_active_plans.py: MISSING
+    scripts/validate_plan.py: MISSING
+    tests/test_cli.py: 19f60e3f189f0cbc6121d7baf04ac5dfa940f8a1f8a1ba96df349727e90943b6
+    tests/test_context.py: 10fe0fc1400e26ae5fc838e8c74a6ec87c32c57238890f30bc46563fe50efc3e
+    tests/test_modules.py: b89ddac1b7ceb5043ca0565193a1bb9f2ecab79e9f2cf3d985de1e93e7328855
+    tests/test_plan_graph.py: c5560bb23e87b90a6125d5563a917d739a36a6a57222393e7aae7d302fcf9b25
+    tests/test_scripts.py: MISSING
+  commands:
+  - poetry run pytest tests/ -v
+  - poetry build
+completed_steps:
+- Review and refine plan
+- Run checks (planguard check)
+- Activate plan (planguard activate)
+- Implement
+- Verify (planguard verify)
+- Complete plan (planguard complete)
+remaining_steps: []
+blockers: []
+handoff:
+  summary: Replaced declarative-only safety gates with diff-aware enforcement and
+    verify-before-complete semantics, then hardened the package metadata and release
+    path for PyPI distribution.
+  notes:
+  - Added git-backed snapshots for audit logging, activation baselines, and verification
+    state.
+  - Enforced complete-only-after-verify and strengthened cross-plan collision detection.
+  - Updated CLI/tests/docs for diff-aware checks, version reporting, and PyPI build
+    guidance.

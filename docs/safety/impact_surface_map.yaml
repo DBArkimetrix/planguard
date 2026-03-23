@@ -1,6 +1,0 @@
-﻿impact_surface:
-  plan: example_plan
-  areas:
-    - api
-    - database
-    - testing

@@ -1,7 +1,0 @@
-﻿handoff:
-  summary: starter framework created; implementation not started
-
-current_state:
-  implementation_complete: false
-  safety_gate_passed: false
-  orchestration_ready: false

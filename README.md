@@ -1,283 +1,479 @@
-# AI Agent Engineering Framework
+# PlanGuard
 
-A way to control how AI coding agents make changes in a software project.
+Control how AI coding agents make changes in your project.
 
-If you are using an AI agent to write code, this framework gives the agent a process to follow before it starts changing files. Instead of letting the agent jump straight into implementation, you require it to first write down the plan, list the work in phases, check for risks, and confirm that its changes will not collide with other work.
+PlanGuard makes AI-assisted development safer without turning it into paperwork. It records intent up front, then enforces the controls that matter against the real git-backed working state: scope drift, protected areas, verification, and an auditable lifecycle log.
 
-The framework enforces a documentation-first workflow:
+Works with any language or stack. Runs on Linux, macOS, and Windows.
 
-`PLAN -> BACKLOG -> SPRINT PLAN -> SAFETY CHECK -> ORCHESTRATE -> IMPLEMENT -> UPDATE DOCS -> HANDOFF`
+## Install
 
-In plain terms, this tool is for teams who want AI agents to behave more like careful contributors and less like unchecked autocomplete.
+### For any project (recommended)
 
-## What This Is For
-
-Use this framework when:
-
-- you want an AI agent to propose work before touching the code
-- you want a human to review the work plan before implementation starts
-- several agents or people may work in the same repository at the same time
-- you want a written record of risks, dependencies, testing, and handoff
-
-Do not think of this as the thing that builds your product. Think of it as the rulebook and paperwork system that sits around the agent and controls how the agent is allowed to work.
-
-## How A Non-Programmer Would Use It
-
-1. You give the agent a task, such as "add a customer billing feature" or "fix the approval workflow."
-2. The agent uses this framework to create a folder in `docs/<plan_name>/` for that task.
-3. Inside that folder, the agent must write the plan, backlog, sprint plan, risk review, regression test plan, and handoff documents.
-4. A human reviews those documents to make sure the task is sensible, safe, and not overlapping with other work.
-5. Only after that review passes should the agent start changing code.
-6. When the work is done, the agent updates the progress and handoff documents so the next person can see what changed and what risks remain.
-
-The main idea is simple: make the agent explain itself before it acts.
-
-## What It Provides
-
-- templates and commands for creating the required planning documents
-- checks that confirm the required documents exist before implementation
-- collision checks to spot when two plans may touch the same area
-- orchestration support so active plans can be sequenced safely
-- architecture and change-impact analysis helpers
-- a CLI and script wrappers so agents can run the workflow consistently
-
-## Installation
-
-For local development in this repository:
+Use [pipx](https://pipx.pypa.io/) to install the `planguard` command globally without touching your project's dependencies:
 
 ```bash
-poetry install
+pipx install planguard
 ```
 
-Run the CLI in the Poetry environment:
+This works whether your project is Python, JavaScript, Rust, Go, Java, or anything else. The `planguard` command is available system-wide.
+
+### For Python projects
+
+Add it as a dev dependency:
 
 ```bash
-poetry run agent --help
-poetry run agent validate
+pip install planguard
 ```
 
-If you need to build distribution artifacts locally:
+Or with Poetry:
+
+```bash
+poetry add --group dev planguard
+```
+
+### Windows
+
+The same commands work in PowerShell or Windows Terminal:
+
+```powershell
+pipx install planguard
+```
+
+Or with pip:
+
+```powershell
+pip install planguard
+```
+
+Requires Python 3.9 or newer. If you don't have Python, install it from [python.org](https://www.python.org/downloads/) or via `winget install Python.Python.3.12`.
+
+### Verify
+
+```bash
+planguard --help
+planguard --version
+```
+
+## Adding to an Existing Project
+
+### Step 1: Navigate to your project
+
+```bash
+cd /path/to/your-project
+```
+
+### Step 2: Run init
+
+```bash
+planguard init
+```
+
+The wizard:
+1. **Scans your project** — detects language, frameworks, source/test directories, build/test/lint commands, git status, CI/CD config
+2. **Shows what it found** and asks you to confirm
+3. **Creates three things:**
+   - `docs/` — where plans will live
+   - `.planguard/` — project context that agents read before working
+   - `AGENTS.md` — workflow rules (appended if the file already exists)
+
+**What gets added to your repo:**
+
+```
+your-project/
+  AGENTS.md                          <-- new, or appended to
+  .planguard/
+    project.yaml                     <-- what this system does, detected stack
+    conventions.md                   <-- coding patterns and style rules
+    boundaries.md                    <-- files/dirs agents must never modify
+    glossary.md                      <-- domain terms mapped to code entities
+    policies.yaml                    <-- governance rules (pattern-based checks)
+  docs/
+    planning/
+      active_plans.yaml              <-- plan registry
+  ... your existing files unchanged
+```
+
+The `.planguard/` context files are generated with your detected stack pre-filled, but you should review and complete them. The boundaries and conventions files are especially important — they tell agents what's off-limits and what patterns to follow.
+
+If AGENTS.md already exists, PlanGuard appends its section (marked with an HTML comment for idempotent re-runs). Your existing rules stay intact.
+
+### Step 3: Commit the framework files
+
+```bash
+git add AGENTS.md docs/
+git commit -m "Add PlanGuard"
+```
+
+Now every AI agent that reads `AGENTS.md` (Claude, Codex, Copilot Workspace, etc.) will see the workflow rules before it starts coding.
+
+## Starting a New Project
+
+```bash
+mkdir my-new-project && cd my-new-project
+git init
+planguard init
+```
+
+The wizard detects an empty project and asks what language/stack you plan to use. It creates the same `docs/` and `AGENTS.md` structure.
+
+## Creating a Plan
+
+```bash
+planguard plan
+```
+
+The wizard walks you through:
+
+| Question | What it's for |
+|----------|--------------|
+| What is the objective? | A plain-language description of what you want to accomplish |
+| Short name for this plan | Creates a folder like `docs/your_plan_name/` |
+| Which directories are in scope? | Restricts what the agent is allowed to modify (auto-detected from your project) |
+| Priority | low, medium, high, or critical |
+| Who owns this plan? | Person or team responsible |
+| How will you know this is done? | Observable conditions that must be true before the work is complete |
+| Commands to verify correctness | Test/lint commands to run (auto-detected from your project) |
+| How would you undo this? | Rollback strategy if things go wrong |
+| Known risks? | Optional: describe risks and how to mitigate them |
+
+The wizard creates two files:
+
+- `docs/<plan_name>/plan.yaml` — objective, scope, phases, risks, dependencies, test strategy
+- `docs/<plan_name>/status.yaml` — progress tracking and handoff notes
+
+**Agents and scripts** can skip the wizard by passing flags:
+
+```bash
+planguard plan "your plan name" --objective "Describe the goal" --scope "src/api, tests" --priority high --no-wizard
+```
+
+## Running Checks
+
+```bash
+planguard check
+```
+
+Runs everything at once and prints a pass/fail report:
+
+```
+Plan: your_plan_name
+  [OK] Structure valid
+  [OK] Risk score: 2 (threshold: 6)
+  [OK] Dependency graph is acyclic
+  Status: draft
+
+Cross-plan checks:
+  No collisions between active plans
+
+All checks passed
+```
+
+What it checks:
+- **Validation** — plan.yaml has all required sections
+- **Risk score** — severity-weighted total vs threshold
+- **Dependency graph** — no circular dependencies
+- **Collisions** — no two active plans declare overlapping paths
+- **Scope drift** — active-plan changes after activation must stay inside scope
+- **Policies and boundaries** — protected areas and content rules can be enforced against real changed files
+
+Check a specific plan:
+
+```bash
+planguard check your_plan_name
+```
+
+## Activating and Implementing
+
+When checks pass:
+
+```bash
+planguard activate your_plan_name
+```
+
+This re-runs checks, then marks the plan as active. The agent can now implement.
+
+After implementation:
+
+```bash
+planguard verify your_plan_name
+planguard complete your_plan_name
+```
+
+`verify` records the exact git-backed snapshot that passed. `complete` only succeeds if the current state still matches that verified snapshot.
+
+## PyPI Distribution
+
+PlanGuard is packaged for PyPI through the metadata in `pyproject.toml` and the console script entry point:
 
 ```bash
 poetry build
 ```
 
-Alternative editable install without Poetry:
+This produces both an sdist and a wheel in `dist/`. Before publishing, validate the artifacts:
 
 ```bash
-pip install -r requirements.txt
-pip install -e .
+python -m twine check dist/*
 ```
 
-For package usage in another repository:
+## Workflow
+
+```
+planguard init  -->  planguard plan  -->  planguard check  -->  planguard activate  -->  implement  -->  planguard check  -->  planguard verify  -->  planguard complete
+```
+
+| Step | What happens |
+|------|-------------|
+| `planguard init` | Detects project, creates docs/, .planguard/ context, and AGENTS.md |
+| `planguard plan` | Wizard creates plan.yaml and status.yaml |
+| `planguard check` | Validates structure, dependencies, declared scope, and for active plans enforces real post-activation changes against scope/policies/boundaries |
+| `planguard activate` | Runs checks, records a baseline git snapshot, marks plan as ready to implement |
+| implement | The agent (or you) writes code within the plan's scope |
+| `planguard verify` | Runs verification commands and stores the exact snapshot that passed |
+| `planguard complete` | Marks plan as done only if the verified snapshot still matches the current state |
+
+## Plan Lifecycle
+
+Every plan has a status: **draft -> active -> completed -> archived**
+
+| Status | Meaning |
+|--------|---------|
+| `draft` | Plan exists but is not yet approved for implementation |
+| `active` | Checks passed, implementation is allowed |
+| `completed` | Work is done |
+| `archived` | Removed from all active consideration |
+
+Only `draft` and `active` plans appear in collision checks and scheduling.
+
+## All Commands
 
 ```bash
-pip install agent-engineering-framework
+planguard init                    # Set up PlanGuard in a project (wizard)
+planguard plan                    # Create a plan (wizard)
+planguard check                   # Run all checks (structure, risk, collisions, scope/policy enforcement)
+planguard check <name>            # Check a specific plan
+planguard activate <name>         # Mark plan as ready to implement
+planguard verify <name>           # Run verification commands from the plan
+planguard complete <name>         # Mark plan as done
+planguard archive <name>          # Archive a plan
+planguard status                  # Table of all plans with status, priority, owner
+planguard list                    # List active plans
+planguard list --all              # Include completed and archived
+planguard log                     # Show session log (audit trail)
+planguard log <name>              # Show log for a specific plan
+planguard graph <name>            # Show dependency graph for a plan
+planguard validate                # Validate plan structure (prefer 'planguard check')
 ```
 
-## CLI Usage
+## How Multiple Plans Work
 
-The installed console script is `agent`.
+When several agents or developers work in the same repo:
 
-Typical use with an agent:
+1. Each piece of work gets its own plan (`planguard plan`)
+2. Each plan declares which directories it will modify (the scope)
+3. `planguard check` detects when two active plans have overlapping or nested scope
+4. Collisions must be resolved (change scope or sequence the work) before both plans can be active
+5. `planguard status` shows a table of all plans and their state
+6. Completed plans stop interfering with active work
 
-- ask the agent to create a plan first
-- review the generated documents in `docs/<plan_name>/`
-- ask the agent to run validation and safety checks
-- only then allow implementation work
+## Plan Files
+
+Each plan is two files:
+
+**plan.yaml** — everything about the plan:
+
+```yaml
+plan:
+  name: your_plan_name
+  status: draft
+  created: '2025-03-23'
+  owner: your-team
+  priority: high
+
+objective: Describe what you are trying to accomplish
+
+scope:
+  included:
+    - src/your_module
+    - tests/your_module
+  excluded:
+    - unrelated modules
+
+phases:
+  - name: analysis
+    tasks:
+      - Analyze current implementation
+      - Identify dependencies
+  - name: implementation
+    tasks:
+      - Implement changes in safe slices
+  - name: validation
+    tasks:
+      - Run regression tests
+
+risks:
+  - id: RISK-001
+    description: May break existing functionality
+    severity: high
+    mitigation: Add regression tests before making changes
+
+done_when:
+  - All tests pass
+  - No regressions in existing functionality
+
+verify_commands:
+  - npm test
+  - npm run lint
+
+rollback_strategy: git revert to prior commit
+
+dependencies:
+  - id: analysis
+    depends_on: []
+  - id: implementation
+    depends_on: [analysis]
+  - id: validation
+    depends_on: [implementation]
+
+test_strategy:
+  - area: Existing functionality in scope paths
+    validation: Confirm no unintended behaviour changes
+```
+
+**status.yaml** — progress tracking:
+
+```yaml
+status:
+  phase: planning
+  progress_percent: 0
+
+activation:
+  activated_at: ''
+  git_branch: ''
+  git_head: ''
+  baseline_changed_files: []
+  baseline_fingerprints: {}
+
+verification:
+  passed: false
+  last_run: ''
+  git_branch: ''
+  git_head: ''
+  changed_files: []
+  fingerprints: {}
+  commands: []
+
+completed_steps: []
+remaining_steps:
+  - Review and refine plan
+  - Run checks (planguard check)
+  - Activate plan (planguard activate)
+  - Implement
+  - Verify (planguard verify)
+  - Complete plan (planguard complete)
+
+blockers: []
+
+handoff:
+  summary: ''
+  notes: []
+```
+
+## Verification
+
+After implementation, run the plan's verification commands:
 
 ```bash
-poetry run agent init
-poetry run agent plan "Implement pricing engine"
-poetry run agent validate
-poetry run agent graph example_plan
+planguard verify your_plan_name
 ```
 
-Equivalent module entrypoint:
+This runs every command listed in `verify_commands` from plan.yaml and reports pass/fail. If the plan omitted them, PlanGuard falls back to detected project test/lint commands when it can:
+
+```
+Running: pytest
+  [OK] pytest
+Running: npm run lint
+  [OK] npm run lint
+
+Verification passed
+```
+
+Verification must pass before you mark the plan complete.
+
+## Policies and Boundaries
+
+`.planguard/policies.yaml` defines rules that `planguard check` enforces. Scope-only rules can gate sensitive paths before implementation; pattern rules are evaluated against actual changed files after activation:
+
+```yaml
+rules:
+  - name: no_raw_sql
+    description: "Do not use raw SQL queries"
+    pattern: "execute.*SELECT|INSERT|UPDATE|DELETE"
+    scope: ["src/**/*.py"]
+    action: block
+
+  - name: migration_requires_approval
+    description: "Database migrations need human approval"
+    scope: ["migrations/**"]
+    action: require_approval
+    risk: high
+```
+
+`.planguard/boundaries.md` defines files and directories that agents must never modify. If a plan's scope overlaps with a boundary, `planguard check` blocks it.
+
+## Session Log
+
+Every lifecycle event is logged to `.planguard/log.jsonl`:
 
 ```bash
-poetry run python -m agent_framework.cli --help
+planguard log                     # Show all events
+planguard log your_plan_name      # Filter by plan
 ```
 
-## What To Do After `agent init` And `agent plan`
+Output:
 
-`agent init` creates the shared documentation folders. `agent plan <name>` creates a starter plan folder in `docs/<plan_name>/`.
-
-Those commands are the beginning of the workflow, not the end of it. After `agent plan`, the next steps are:
-
-1. Review and complete the generated files in `docs/<plan_name>/`.
-2. Make sure the plan has a real scope, allowed paths, risks, backlog phases, sprint sequencing, and handoff notes.
-3. Add the plan to `docs/planning/active_plans.yaml` if it is now an active piece of work.
-4. Add the plan's owned paths to `docs/planning/plan_file_map.yaml` so collision checks can detect overlap.
-5. Run the validation and planning checks.
-6. Only then start implementation work.
-
-Typical command sequence:
-
-```bash
-poetry run agent init
-poetry run agent plan "Implement pricing engine"
-poetry run agent validate
-poetry run python scripts/detect_collisions.py
-poetry run python scripts/build_execution_schedule.py
-poetry run python scripts/compute_risk_score.py
+```
+  2025-03-23 14:02  plan_created [your_plan_name] — Describe the goal
+  2025-03-23 14:05  plan_activated [your_plan_name]
+  2025-03-23 15:30  verification [your_plan_name] passed
+  2025-03-23 15:31  plan_completed [your_plan_name]
 ```
 
-Important: in the current implementation, `agent validate` checks that the required plan files exist. It does not fully block implementation by itself.
+This is your audit trail — what the agent did, when, whether it worked, and which git state it was operating against.
 
-To make the workflow actually govern agent behavior, the repository the agent is editing should contain a root-level `AGENTS.md` that says, in plain terms:
+## What AGENTS.md Does
 
-- the agent must not start implementation before the plan, backlog, sprint plan, safety review, and orchestration review are complete
-- the agent must create and update the required files in `docs/<plan_name>/`
-- the agent must update `docs/planning/active_plans.yaml` and `docs/planning/plan_file_map.yaml` for active work
-- the agent must run the validation, collision, and orchestration checks before coding
-- the agent must update progress and handoff docs when the work is done
+`AGENTS.md` is a convention that AI coding agents read before they start working. It tells them:
 
-That means the workflow is enforced operationally by:
+- Do not write code without a plan
+- Run checks before implementing
+- Stay within the plan's declared scope
+- Verify before completing
 
-- the root `AGENTS.md` instructions in the target repository
-- the generated planning artifacts in `docs/`
-- human review
-- the validation, collision, and orchestration scripts
+The `planguard init` command generates this file. You can customise it for your team's specific rules. Any AI agent that respects project-root instruction files (Claude, Codex, Copilot, etc.) will follow it.
 
-When working with Codex or another coding agent, the `AGENTS.md` file should sit in the root of the repository being changed. If the agent is working in `/path/to/my-app`, use:
+## Compatibility with Agent Cookbooks
 
-```text
-/path/to/my-app/AGENTS.md
-```
+PlanGuard incorporates best practices from the [OpenAI Codex cookbook](https://developers.openai.com/codex/learn/best-practices) and [Claude Code best practices](https://code.claude.com/docs/en/best-practices):
 
-A minimal `AGENTS.md` for a project using this framework can say something like:
+| Practice | How PlanGuard implements it |
+|----------|-------------------------------|
+| Include build/test/lint commands in agent instructions | `planguard init` detects your stack and writes commands into AGENTS.md |
+| Define observable "done when" criteria | The plan wizard asks "How will you know this is done?" |
+| Include verification commands | The wizard asks for commands to verify correctness |
+| Explore before editing | AGENTS.md best practices section includes this rule |
+| Validation-gated progression | `planguard activate` runs checks before allowing implementation |
+| Scope changes to declared paths | plan.yaml declares included/excluded paths |
+| Keep a written record of risks and decisions | plan.yaml captures risks, mitigation, and test strategy |
+| Write or update tests for every change | Encoded in AGENTS.md best practices and plan test_strategy |
 
-```md
-# AGENTS.md
+PlanGuard works with any agent that reads AGENTS.md (Codex, Claude, Cursor, Copilot, etc.). If your project also uses CLAUDE.md, PlanGuard detects it and does not interfere — AGENTS.md and CLAUDE.md serve complementary roles.
 
-This repository uses the agent-engineering-framework workflow.
+## Requirements
 
-Mandatory workflow:
-PLAN -> BACKLOG -> SPRINT PLAN -> SAFETY CHECK -> ORCHESTRATE -> IMPLEMENT -> UPDATE DOCS -> HANDOFF
-
-Agents must not implement code until:
-- docs/<plan_name>/plan.yaml exists
-- docs/<plan_name>/backlog.yaml exists
-- docs/<plan_name>/sprint_plan.yaml exists
-- safety review artifacts are complete
-- orchestration review is complete
-- collision, regression, conflict, and unintended-consequence checks are reviewed
-
-Before implementation, agents must:
-- update docs/planning/active_plans.yaml
-- update docs/planning/plan_file_map.yaml
-- run validation and planning checks
-
-After implementation, agents must:
-- update progress.yaml
-- update handoff.yaml
-```
-
-You can keep more detailed instructions in that root `AGENTS.md`, but this is the minimum level of clarity needed if you want the agent to follow the process reliably.
-
-If you are prompting the agent directly in addition to using `AGENTS.md`, a reliable instruction looks like this:
-
-```text
-Use the AGENTS.md workflow. Do not implement yet.
-First complete or update docs/<plan_name>/, update active_plans.yaml and plan_file_map.yaml,
-run validation/collision/orchestration checks, and only implement after the plan is ready.
-```
-
-## Using This Framework Inside Another Repository
-
-There are two common ways to use the framework in an existing project.
-
-### Recommended: Copy The Workflow Into The Project Root
-
-Put the framework's operational files in the repository that the agent will actually modify:
-
-- `AGENTS.md`
-- `docs/`
-- `scripts/`
-- any project-specific templates or wrappers you want to keep
-
-This is the simplest setup because the agent sees the workflow rules and the plan artifacts in the same repository it is editing. In most cases, this is the setup you want.
-
-### Alternative: Keep The Framework In A Nested, Ignored Folder
-
-You can clone this repository into something like `.agent-framework/` and add that folder to `.gitignore`, but that should be treated as a source of templates and helper scripts, not as the primary instruction location for the agent.
-
-If you use this approach:
-
-- the repository root that the agent works in should still contain the authoritative `AGENTS.md`
-- that root `AGENTS.md` can either contain the full workflow instructions or point to the vendored framework copy
-- the active plan artifacts should still live in the target repository's `docs/` folder, not only inside the ignored framework clone
-
-In practice, the safest rule is:
-
-- put `AGENTS.md` at the root of the repository the agent is operating on
-- keep the active `docs/` planning files in that same repository
-- use the ignored framework clone only as a local helper/tooling source
-
-### Where `AGENTS.md` Should Live
-
-If Codex is opened on `/path/to/my-app`, then the file should normally be:
-
-```text
-/path/to/my-app/AGENTS.md
-```
-
-If this framework is vendored into:
-
-```text
-/path/to/my-app/.agent-framework/
-```
-
-then keep the framework copy there if you want, but also place an `AGENTS.md` in `/path/to/my-app/` so the workflow instructions apply to work across the whole repository.
-
-If you want, you can make the root `AGENTS.md` short and use it to reference or reproduce the policy from the vendored framework copy. What matters is that the root file is present and clearly tells the agent to use the workflow before making code changes.
-
-## Legacy Script Wrappers
-
-The repository also keeps script wrappers for direct invocation from the repo root:
-
-```bash
-python scripts/generate_plan.py "Implement pricing engine"
-python scripts/validate_plan.py
-python scripts/compute_risk_score.py
-python scripts/detect_collisions.py
-python scripts/build_execution_schedule.py
-python scripts/analyze_change_impact.py
-python scripts/generate_architecture_diagram.py
-```
-
-## Required Plan Files
-
-Each implementation plan must contain:
-
-```text
-docs/<plan_name>/
-    plan.yaml
-    backlog.yaml
-    sprint_plan.yaml
-    progress.yaml
-    handoff.yaml
-    risk_register.yaml
-    regression_test_plan.yaml
-    dependency_map.yaml
-    collision_detection.yaml
-```
-
-## Typical Workflow
-
-1. Initialize the framework structure if the repository does not already contain it.
-2. Generate a plan scaffold.
-3. Complete backlog, sprint, safety, and orchestration artifacts.
-4. Run validation and collision checks.
-5. Implement only after the safety gate and orchestration status are ready.
-6. Update progress and handoff artifacts before merge.
-
-## Notes
-
-- `agent graph` reads `dependency_map.yaml` entries with `id` and optional `depends_on`.
-- `scripts/check_pr_changes.py` validates changes against the active plans listed in `docs/planning/active_plans.yaml`.
-- The Python `graphviz` dependency provides diagram generation support; rendering images may still require the Graphviz system binary on the host machine.
+- Python 3.9 or newer
+- Works on Linux, macOS, and Windows
+- No system dependencies beyond Python
 
 ## License
 

@@ -1,9 +1,0 @@
-plan_dag:
-  nodes:
-    - shared_schema_update
-    - example_plan
-    - package_repair
-  edges:
-    - from: shared_schema_update
-      to: example_plan
-      reason: schema must stabilize before dependent work

@@ -1,7 +1,0 @@
-﻿contracts:
-  - service: example_api
-    endpoint: /api/v1/example
-    method: GET
-    guarantees:
-      - backward compatibility preferred
-      - schema changes must be documented

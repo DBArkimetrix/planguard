@@ -1,9 +1,0 @@
-dependencies:
-  - id: packaging_review
-    depends_on: []
-    impact: confirms whether Poetry should be documented as the primary maintainer workflow
-
-  - id: readme_refresh
-    depends_on:
-      - packaging_review
-    impact: updates user-facing installation and CLI guidance without changing runtime behavior

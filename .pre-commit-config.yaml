@@ -3,32 +3,8 @@ repos:
   - repo: local
     hooks:
 
-      - id: validate-plan
-        name: Validate plan structure
-        entry: python scripts/validate_plan.py
-        language: system
-        pass_filenames: false
-
-      - id: compute-risk
-        name: Compute safety risk score
-        entry: python scripts/compute_risk_score.py
-        language: system
-        pass_filenames: false
-
-      - id: detect-collisions
-        name: Detect plan collisions
-        entry: python scripts/detect_collisions.py
-        language: system
-        pass_filenames: false
-
-      - id: build-execution
-        name: Build execution schedule
-        entry: python scripts/build_execution_schedule.py
-        language: system
-        pass_filenames: false
-
-      - id: change-impact
-        name: Analyze architecture change impact
-        entry: python scripts/analyze_change_impact.py
+      - id: planguard-check
+        name: PlanGuard checks
+        entry: planguard check
         language: system
         pass_filenames: false

@@ -1,7 +1,0 @@
-﻿interface_collision_matrix:
-  - surface: database
-    plans:
-      - shared_schema_update
-      - example_plan
-    collision_risk: high
-    action: sequence plans and block parallel execution

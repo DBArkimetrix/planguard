@@ -1,5 +1,5 @@
 ﻿system:
-  name: agent_framework_v3
+  name: planguard
   description: framework for safe multi-agent software delivery
 
 components:
