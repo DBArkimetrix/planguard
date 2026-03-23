@@ -17,6 +17,9 @@ planguard status        # Show all plans
 
 ## Instruction
 
-Before executing any task:
+For non-trivial changes (new features, refactors, multi-file edits):
 1. Read AGENTS.md
 2. Follow the workflow: PLAN -> CHECK -> ACTIVATE -> IMPLEMENT -> COMPLETE
+
+For small changes (typos, single-line fixes, formatting, config tweaks):
+- Proceed directly — no plan required.

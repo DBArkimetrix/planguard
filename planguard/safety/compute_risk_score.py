@@ -36,6 +36,11 @@ def compute_risk_score(
     data = yaml.safe_load(plan_path.read_text(encoding="utf-8")) or {}
     risks = data.get("risks", [])
 
+    # Allow per-plan threshold override via plan.yaml
+    plan_meta = data.get("plan", {})
+    if isinstance(plan_meta, dict) and "risk_threshold" in plan_meta:
+        threshold = int(plan_meta["risk_threshold"])
+
     details: list[dict] = []
     total = 0
     for risk in risks:

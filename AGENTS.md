@@ -18,12 +18,14 @@ Test:
 
 PLAN -> CHECK -> ACTIVATE -> IMPLEMENT -> COMPLETE
 
-Before writing any code, agents must:
+For non-trivial changes (new features, refactors, multi-file edits), agents must:
 
 1. Create a plan: `planguard plan`
 2. Run checks: `planguard check`
 3. Activate the plan: `planguard activate <plan_name>`
 4. Only then begin implementation
+
+For small changes (typos, single-line fixes, formatting, config tweaks), agents may proceed directly without a plan.
 
 After implementation, agents must:
 
@@ -33,8 +35,8 @@ After implementation, agents must:
 
 ### Rules
 
-- Never implement without an active plan
-- Never skip the check step
+- Never implement non-trivial changes without an active plan
+- Never skip the check step for planned work
 - Never modify files outside the plan's declared scope
 - Always document risks and test strategy before coding
 - Never complete a plan without a passing verification run

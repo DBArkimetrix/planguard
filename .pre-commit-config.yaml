@@ -8,3 +8,5 @@ repos:
         entry: planguard check
         language: system
         pass_filenames: false
+        verbose: true
+        stages: [manual]

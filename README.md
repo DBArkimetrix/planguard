@@ -648,6 +648,60 @@ PlanGuard incorporates best practices from the [OpenAI Codex cookbook](https://d
 
 PlanGuard works with any agent that reads AGENTS.md (Codex, Claude, Cursor, Copilot, etc.). If your project also uses CLAUDE.md, PlanGuard detects it and does not interfere — AGENTS.md and CLAUDE.md serve complementary roles.
 
+## Disabling or Removing PlanGuard
+
+### Skip the workflow for small changes
+
+AGENTS.md and CLAUDE.md allow small changes (typos, single-line fixes, formatting) to proceed without a plan. Only non-trivial work (new features, refactors, multi-file edits) requires the full workflow.
+
+### Disable the pre-commit hook
+
+The pre-commit hook runs in manual mode by default, so it will not block normal commits. To run it explicitly:
+
+```bash
+pre-commit run --hook-stage manual planguard-check
+```
+
+To remove the hook entirely:
+
+```bash
+pre-commit uninstall
+rm .pre-commit-config.yaml
+```
+
+### Remove PlanGuard from a project
+
+```bash
+# 1. Remove project files
+rm -rf .planguard/
+rm -rf docs/planning/
+
+# 2. Remove the pre-commit hook
+pre-commit uninstall
+rm .pre-commit-config.yaml
+
+# 3. Clean up agent instructions
+#    Edit AGENTS.md — remove the PlanGuard workflow section
+#    Edit CLAUDE.md — remove the workflow instruction section
+
+# 4. Uninstall the CLI
+pipx uninstall planguard   # or: pip uninstall planguard
+
+# 5. Optionally remove plan directories
+rm -rf docs/*/plan.yaml docs/*/status.yaml
+```
+
+### Override the risk threshold
+
+If the default risk threshold (6) is too restrictive, you can override it per-plan by adding a `risk_threshold` field to your `plan.yaml`:
+
+```yaml
+plan:
+  name: your_plan
+  status: draft
+  risk_threshold: 12   # default is 6
+```
+
 ## Requirements
 
 - Python 3.9 or newer
