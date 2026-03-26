@@ -1,4 +1,4 @@
-"""Tests for project context, policy engine, session log, and verify."""
+"""Tests for project context, policy engine, session log, guard, and verify."""
 
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -16,6 +16,12 @@ from planguard.context.project_context import (
 from planguard.context.session_log import log_event, read_log
 from planguard.planning.generate_plan import generate_plan
 from planguard.safety.check_policies import check_policies, check_boundary_violations
+from planguard.safety.guard import (
+    scan_files_for_db_paths,
+    scan_diff_for_schema_changes,
+    GuardFinding,
+    GuardReport,
+)
 
 
 class ProjectContextTests(unittest.TestCase):
@@ -213,3 +219,140 @@ class RollbackStrategyTests(unittest.TestCase):
             plan_dir = generate_plan(name="default", objective="test", docs_dir=docs)
             data = yaml.safe_load((plan_dir / "plan.yaml").read_text())
             self.assertIn("git revert", data["rollback_strategy"])
+
+
+class GuardPathScanTests(unittest.TestCase):
+    def test_migration_path_flagged(self) -> None:
+        findings = scan_files_for_db_paths(["migrations/0001_initial.py"])
+        self.assertEqual(len(findings), 1)
+        self.assertIn("migrations", findings[0].reason)
+
+    def test_alembic_path_flagged(self) -> None:
+        findings = scan_files_for_db_paths(["alembic/versions/abc123.py"])
+        self.assertEqual(len(findings), 1)
+        self.assertIn("alembic", findings[0].reason)
+
+    def test_nested_migration_path_flagged(self) -> None:
+        findings = scan_files_for_db_paths(["myapp/migrations/0002_add_field.py"])
+        self.assertEqual(len(findings), 1)
+
+    def test_sql_extension_flagged(self) -> None:
+        findings = scan_files_for_db_paths(["changes/update.sql"])
+        self.assertEqual(len(findings), 1)
+        self.assertIn(".sql", findings[0].reason)
+
+    def test_safe_path_not_flagged(self) -> None:
+        findings = scan_files_for_db_paths(["src/utils/helpers.py", "tests/test_api.py"])
+        self.assertEqual(findings, [])
+
+    def test_django_db_migrate_path(self) -> None:
+        findings = scan_files_for_db_paths(["db/migrate/20250101_create_users.rb"])
+        self.assertEqual(len(findings), 1)
+
+
+class GuardDiffScanTests(unittest.TestCase):
+    def test_create_table_flagged(self) -> None:
+        diff = (
+            "diff --git a/migrations/0001.sql b/migrations/0001.sql\n"
+            "+++ b/migrations/0001.sql\n"
+            "+CREATE TABLE users (id INTEGER PRIMARY KEY);\n"
+        )
+        findings = scan_diff_for_schema_changes(diff)
+        self.assertTrue(len(findings) >= 1)
+
+    def test_alter_table_flagged(self) -> None:
+        diff = (
+            "diff --git a/schema.sql b/schema.sql\n"
+            "+++ b/schema.sql\n"
+            "+ALTER TABLE users ADD COLUMN email VARCHAR(255);\n"
+        )
+        findings = scan_diff_for_schema_changes(diff)
+        self.assertTrue(len(findings) >= 1)
+
+    def test_drop_column_flagged(self) -> None:
+        diff = (
+            "diff --git a/schema.sql b/schema.sql\n"
+            "+++ b/schema.sql\n"
+            "+ALTER TABLE users DROP COLUMN old_field;\n"
+        )
+        findings = scan_diff_for_schema_changes(diff)
+        self.assertTrue(len(findings) >= 1)
+
+    def test_alembic_op_flagged(self) -> None:
+        diff = (
+            "diff --git a/alembic/versions/abc.py b/alembic/versions/abc.py\n"
+            "+++ b/alembic/versions/abc.py\n"
+            "+    op.add_column('users', sa.Column('age', sa.Integer()))\n"
+        )
+        findings = scan_diff_for_schema_changes(diff)
+        self.assertTrue(len(findings) >= 1)
+
+    def test_django_migration_op_flagged(self) -> None:
+        diff = (
+            "diff --git a/app/migrations/0002.py b/app/migrations/0002.py\n"
+            "+++ b/app/migrations/0002.py\n"
+            "+        migrations.AddField(\n"
+        )
+        findings = scan_diff_for_schema_changes(diff)
+        self.assertTrue(len(findings) >= 1)
+
+    def test_rails_migration_op_flagged(self) -> None:
+        diff = (
+            "diff --git a/db/migrate/001.rb b/db/migrate/001.rb\n"
+            "+++ b/db/migrate/001.rb\n"
+            "+    add_column :users, :email, :string\n"
+        )
+        findings = scan_diff_for_schema_changes(diff)
+        self.assertTrue(len(findings) >= 1)
+
+    def test_safe_diff_not_flagged(self) -> None:
+        diff = (
+            "diff --git a/src/utils.py b/src/utils.py\n"
+            "+++ b/src/utils.py\n"
+            "+def hello():\n"
+            "+    return 'world'\n"
+        )
+        findings = scan_diff_for_schema_changes(diff)
+        self.assertEqual(findings, [])
+
+    def test_removed_lines_not_flagged(self) -> None:
+        diff = (
+            "diff --git a/schema.sql b/schema.sql\n"
+            "+++ b/schema.sql\n"
+            "-CREATE TABLE old_table (id INT);\n"
+            " -- context line\n"
+        )
+        findings = scan_diff_for_schema_changes(diff)
+        self.assertEqual(findings, [])
+
+
+class GuardReportTests(unittest.TestCase):
+    def test_empty_report_not_flagged(self) -> None:
+        report = GuardReport()
+        self.assertFalse(report.flagged)
+
+    def test_report_with_findings_is_flagged(self) -> None:
+        report = GuardReport(findings=[
+            GuardFinding(path="migrations/001.py", reason="test"),
+        ])
+        self.assertTrue(report.flagged)
+
+
+class DefaultPolicyTests(unittest.TestCase):
+    def test_init_creates_migration_policy_by_default(self) -> None:
+        with TemporaryDirectory() as tmp:
+            init_context(tmp, name="test-project")
+            policies = load_policies(tmp)
+            rules = policies.get("rules", [])
+            rule_names = [r.get("name") for r in rules if isinstance(r, dict)]
+            self.assertIn("migration_requires_plan", rule_names)
+            self.assertIn("schema_change_requires_plan", rule_names)
+
+    def test_init_creates_migration_boundary_by_default(self) -> None:
+        with TemporaryDirectory() as tmp:
+            init_context(tmp, name="test-project")
+            boundaries = load_boundaries(tmp)
+            self.assertTrue(
+                any("migrations" in b for b in boundaries),
+                f"Expected 'migrations' in boundaries, got: {boundaries}",
+            )

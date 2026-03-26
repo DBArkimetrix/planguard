@@ -21,3 +21,5 @@ active_plans:
   status: completed
 - name: agents_version_sync_rule
   status: completed
+- name: database_safety_enhancements
+  status: completed

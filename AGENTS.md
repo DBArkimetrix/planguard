@@ -25,7 +25,7 @@ For non-trivial changes (new features, refactors, multi-file edits), agents must
 3. Activate the plan: `planguard activate <plan_name>`
 4. Only then begin implementation
 
-For small changes (typos, single-line fixes, formatting, config tweaks), agents may proceed directly without a plan.
+For small changes (typos, single-line fixes, formatting, config tweaks), agents may proceed directly without a plan. However, database and schema changes are never small — even adding a single field requires a plan. When in doubt, run `planguard guard` to check.
 
 After implementation, agents must:
 

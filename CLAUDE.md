@@ -12,6 +12,7 @@ planguard plan          # Create a plan (interactive wizard)
 planguard check         # Run all checks
 planguard activate X    # Mark plan as ready to implement
 planguard complete X    # Mark plan as done
+planguard guard         # Scan staged diff for database/schema risks
 planguard status        # Show all plans
 ```
 
@@ -23,3 +24,4 @@ For non-trivial changes (new features, refactors, multi-file edits):
 
 For small changes (typos, single-line fixes, formatting, config tweaks):
 - Proceed directly — no plan required.
+- Exception: database/schema changes always require a plan. Run `planguard guard` if unsure.

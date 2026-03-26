@@ -76,11 +76,12 @@ _BOUNDARIES_MD_TEMPLATE = """\
 - (e.g. .env, credentials.json, production config)
 
 ## Off-limits directories
-- (e.g. migrations/ without approval, vendor/, third_party/)
+- migrations/ — database migrations require an active plan
+- (e.g. vendor/, third_party/)
 
 ## Off-limits patterns
 - (e.g. "Do not modify authentication logic without security review")
-- (e.g. "Do not delete or rename database columns")
+- Do not delete or rename database columns without an active plan
 """
 
 _GLOSSARY_MD_TEMPLATE = """\
@@ -97,21 +98,58 @@ _POLICIES_YAML_TEMPLATE = """\
 # Governance policies — checked automatically by `planguard check`.
 # Add pattern-based rules to block or flag risky changes.
 
-rules: []
-  # Examples:
-  # - name: no_raw_sql
-  #   description: "Do not use raw SQL queries"
-  #   pattern: "execute.*SELECT|INSERT|UPDATE|DELETE"
-  #   scope: ["src/**/*.py"]
-  #   action: block
+rules:
+  - name: migration_requires_plan
+    description: "Database migrations require an active plan"
+    scope: ["migrations/**", "alembic/**", "**/migrations/**"]
+    action: require_approval
+    risk: high
+
+  - name: schema_change_requires_plan
+    description: "Database schema changes require an active plan"
+    pattern: "CREATE TABLE|ALTER TABLE|DROP TABLE|ADD COLUMN|DROP COLUMN|CREATE INDEX|DROP INDEX"
+    scope: ["**/*.sql", "**/*.py"]
+    action: require_approval
+    risk: high
+
+  # Security examples — uncomment rules relevant to your project:
   #
-  # - name: migration_requires_approval
-  #   description: "Database migrations need human approval"
-  #   pattern: "*.migration.*"
-  #   scope: ["migrations/**"]
+  # - name: no_hardcoded_secrets
+  #   description: "Do not hardcode API keys, tokens, or passwords"
+  #   pattern: "(api_key|apikey|secret_key|password|token)\\s*=\\s*[\"'][^\"']{8,}"
+  #   scope: ["**/*.py", "**/*.js", "**/*.ts"]
+  #   action: block
+  #   risk: critical
+  #
+  # - name: no_raw_sql
+  #   description: "Do not use raw SQL — use parameterized queries or the ORM"
+  #   pattern: "execute\\(\\s*f[\"']|execute\\(.*%\\s*\\(|execute\\(.*\\.format\\("
+  #   scope: ["**/*.py"]
+  #   action: block
+  #   risk: high
+  #
+  # - name: no_eval_or_exec
+  #   description: "Do not use eval() or exec() — risk of code injection"
+  #   pattern: "\\beval\\s*\\(|\\bexec\\s*\\("
+  #   scope: ["**/*.py"]
+  #   action: block
+  #   risk: critical
+  #
+  # - name: no_shell_injection
+  #   description: "Do not pass unsanitized input to shell commands"
+  #   pattern: "subprocess\\.(call|run|Popen)\\(.*shell\\s*=\\s*True"
+  #   scope: ["**/*.py"]
   #   action: require_approval
   #   risk: high
   #
+  # - name: no_disabled_auth
+  #   description: "Do not disable authentication or authorization checks"
+  #   pattern: "@(no_auth|skip_auth|allow_anonymous|csrf_exempt)"
+  #   scope: ["**/*.py"]
+  #   action: require_approval
+  #   risk: high
+  #
+  # Additional examples:
   # - name: no_new_dependencies
   #   description: "Do not add new package dependencies without approval"
   #   trigger: dependencies_added

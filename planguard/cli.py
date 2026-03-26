@@ -31,6 +31,7 @@ from planguard.planning.generate_plan import generate_plan
 from planguard.safety.check_policies import check_boundary_violations, check_policies
 from planguard.safety.compute_risk_score import compute_risk_score
 from planguard.safety.git_state import get_git_snapshot
+from planguard.safety.guard import run_guard
 from planguard.validation.validate_plan import (
     discover_plan_dirs,
     validate_plan,
@@ -112,12 +113,16 @@ def _build_workflow_section(info: "ProjectInfo | None" = None) -> str:
         "",
         "PLAN -> CHECK -> ACTIVATE -> IMPLEMENT -> COMPLETE",
         "",
-        "Before writing any code, agents must:",
+        "For non-trivial changes (new features, refactors, multi-file edits), agents must:",
         "",
         "1. Create a plan: `planguard plan`",
         "2. Run checks: `planguard check`",
         "3. Activate the plan: `planguard activate <plan_name>`",
         "4. Only then begin implementation",
+        "",
+        "For small changes (typos, single-line fixes, formatting, config tweaks), agents may proceed directly without a plan.",
+        "However, database and schema changes are never small — even adding a single field requires a plan.",
+        "When in doubt, run `planguard guard` to check.",
         "",
         "After implementation, agents must:",
         "",
@@ -1082,6 +1087,48 @@ def graph(name: str = typer.Argument(..., help="Plan name to show dependency gra
 
     graph_obj = build_plan_graph(plan_dir)
     raise typer.Exit(code=print_analysis(graph_obj))
+
+
+# ---------------------------------------------------------------------------
+# guard
+# ---------------------------------------------------------------------------
+
+@app.command()
+def guard(
+    root: str = typer.Argument(".", help="Project root directory."),
+):
+    """Inspect staged (or unstaged) changes for database and schema risks.
+
+    Use this before committing to catch database-related changes that should
+    have an active plan. Unlike 'planguard check', guard works without a plan —
+    it scans the git diff directly and flags migration files, schema DDL,
+    and ORM migration operations regardless of whether a plan exists.
+
+    Exits with code 1 if risky changes are found.
+    """
+    print(Panel("[bold]PlanGuard Guard[/bold]", style="cyan"))
+
+    report = run_guard(root)
+    if not report.flagged:
+        print("[green]No database or schema risks detected in staged changes.[/green]")
+        raise typer.Exit(code=0)
+
+    print(f"[red][bold]Found {len(report.findings)} database-related change(s) that should require a plan:[/bold][/red]")
+    print()
+    for finding in report.findings:
+        print(f"  [red][FLAGGED][/red] {finding.path}")
+        print(f"           {finding.reason}")
+    print()
+    print(Panel(
+        "[bold yellow]These changes affect database state and should not be treated as small changes.[/bold yellow]\n"
+        "Create a plan first: [cyan]planguard plan[/cyan]",
+        style="yellow",
+    ))
+    log_event("guard_flagged", details={
+        "findings_count": len(report.findings),
+        "paths": list({f.path for f in report.findings}),
+    })
+    raise typer.Exit(code=1)
 
 
 # ---------------------------------------------------------------------------
