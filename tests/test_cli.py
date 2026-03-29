@@ -28,6 +28,69 @@ class CliTests(unittest.TestCase):
         data["verify_commands"] = commands
         plan_path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
 
+    def _legacy_status(self, phase: str = "planning") -> dict:
+        return {"status": {"phase": phase}}
+
+    def _legacy_plan_data(self, name: str, *, status: str, scope: list[str]) -> dict:
+        phase_name = "implementation"
+        backlog_id = "BL-001"
+        return {
+            "plan": {
+                "name": name,
+                "status": status,
+                "created": "2025-01-01",
+                "priority": "medium",
+            },
+            "objective": name.replace("_", " "),
+            "scope": {"included": scope},
+            "phases": [{"name": phase_name, "tasks": ["Review legacy content"]}],
+            "backlog": [{
+                "id": backlog_id,
+                "title": "Review legacy content",
+                "type": "task",
+                "phase": phase_name,
+                "scope": scope,
+                "depends_on": [],
+                "deliverables": ["Reviewed legacy content"],
+                "tests": ["Document expected behaviour"],
+                "done_when": ["Legacy content reviewed"],
+            }],
+            "sprints": [{
+                "id": "SPRINT-01",
+                "name": "Sprint 1",
+                "goal": "Review legacy content",
+                "backlog_items": [backlog_id],
+                "focus_paths": scope,
+                "exit_criteria": ["Legacy content reviewed"],
+            }],
+            "risks": [],
+            "dependencies": [],
+        }
+
+    def _write_legacy_plan(
+        self,
+        name: str,
+        *,
+        plan_data: dict | None = None,
+        raw_plan: str | None = None,
+        status_data: dict | None = None,
+    ) -> Path:
+        plan_dir = Path("docs") / name
+        plan_dir.mkdir(parents=True, exist_ok=True)
+        if raw_plan is not None:
+            (plan_dir / "plan.yaml").write_text(raw_plan, encoding="utf-8")
+        else:
+            (plan_dir / "plan.yaml").write_text(
+                yaml.safe_dump(plan_data, sort_keys=False),
+                encoding="utf-8",
+            )
+        if status_data is not None:
+            (plan_dir / "status.yaml").write_text(
+                yaml.safe_dump(status_data, sort_keys=False),
+                encoding="utf-8",
+            )
+        return plan_dir
+
     def test_plan_command_creates_plan_and_status(self) -> None:
         with self.runner.isolated_filesystem():
             result = self.runner.invoke(app, [
@@ -81,6 +144,73 @@ class CliTests(unittest.TestCase):
             result = self.runner.invoke(app, ["check", "check_test"])
             self.assertEqual(result.exit_code, 0, result.output)
             self.assertIn("OK", result.output)
+
+    def test_check_reports_malformed_plan_yaml_without_traceback(self) -> None:
+        with self.runner.isolated_filesystem():
+            good_result = self.runner.invoke(app, [
+                "plan", "alpha plan",
+                "--objective", "Valid plan",
+                "--no-wizard",
+            ])
+            self.assertEqual(good_result.exit_code, 0, good_result.output)
+
+            bad_dir = get_default_plans_root() / "broken_yaml"
+            bad_dir.mkdir(parents=True, exist_ok=True)
+            (bad_dir / "plan.yaml").write_text(
+                "\n".join([
+                    "plan:",
+                    "  name: broken_yaml",
+                    "  status: draft",
+                    "  created: '2025-01-01'",
+                    "  priority: medium",
+                    "objective: Broken verify commands",
+                    "scope:",
+                    "  included:",
+                    "    - src/bad",
+                    "phases:",
+                    "  - name: review",
+                    "    tasks:",
+                    "      - inspect",
+                    "backlog:",
+                    "  - id: BL-001",
+                    "    title: Inspect",
+                    "    type: analysis",
+                    "    phase: review",
+                    "    scope:",
+                    "      - src/bad",
+                    "    depends_on: []",
+                    "    deliverables:",
+                    "      - notes",
+                    "    tests:",
+                    "      - inspect",
+                    "    done_when:",
+                    "      - inspected",
+                    "sprints:",
+                    "  - id: SPRINT-01",
+                    "    name: Sprint 1",
+                    "    goal: Inspect",
+                    "    backlog_items:",
+                    "      - BL-001",
+                    "    focus_paths:",
+                    "      - src/bad",
+                    "    exit_criteria:",
+                    "      - inspected",
+                    "risks: []",
+                    "dependencies: []",
+                    "verify_commands:",
+                    "  - [python -c \"print('a: b')\"",
+                    "",
+                ]),
+                encoding="utf-8",
+            )
+
+            result = self.runner.invoke(app, ["check"])
+            self.assertNotEqual(result.exit_code, 0)
+            self.assertIn("Plan: alpha_plan", result.output)
+            self.assertIn("Plan: broken_yaml", result.output)
+            self.assertIn("Invalid YAML in plan.yaml:", result.output)
+            self.assertRegex(result.output, r"broken_yaml/plan\.yaml:\d+:\d+")
+            self.assertNotIn("Traceback", result.output)
 
     def test_activate_sets_status_to_active(self) -> None:
         with self.runner.isolated_filesystem():
@@ -352,6 +482,200 @@ class CliTests(unittest.TestCase):
             self.assertTrue(get_status_path("legacy_plan").exists())
             self.assertFalse(Path("docs/planning/active_plans.yaml").exists())
             self.assertFalse(Path("docs/legacy_plan/status.yaml").exists())
+
+    def test_upgrade_suspends_placeholder_plan_and_backfills_review_structure(self) -> None:
+        with self.runner.isolated_filesystem():
+            placeholder = {
+                "plan": {
+                    "name": "gateway_agent_ui",
+                    "status": "placeholder",
+                    "created": "2025-01-01",
+                    "priority": "medium",
+                },
+                "objective": "Gateway agent UI",
+                "scope": {"included": ["src/gateway/ui"]},
+            }
+            self._write_legacy_plan(
+                "gateway_agent_ui",
+                plan_data=placeholder,
+                status_data=self._legacy_status(),
+            )
+
+            result = self.runner.invoke(app, ["upgrade", ".", "--no-wizard"])
+            self.assertEqual(result.exit_code, 0, result.output)
+
+            migrated_plan = yaml.safe_load(
+                (get_default_plans_root() / "gateway_agent_ui" / "plan.yaml").read_text(encoding="utf-8")
+            )
+            migrated_status = yaml.safe_load(
+                get_status_path("gateway_agent_ui").read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(migrated_plan["plan"]["status"], "suspended")
+            self.assertTrue(migrated_plan["phases"])
+            self.assertTrue(migrated_plan["backlog"])
+            self.assertTrue(migrated_plan["sprints"])
+            self.assertIn("tests", migrated_plan["backlog"][0])
+            self.assertIn("focus_paths", migrated_plan["sprints"][0])
+            self.assertIn("remaining_steps", migrated_status)
+            self.assertEqual(migrated_status["status"]["phase"], "suspended")
+            self.assertIn("Suspended for review:", result.output)
+            self.assertIn("gateway_agent_ui", result.output)
+
+    def test_upgrade_backfills_legacy_completed_plan_and_status_fields(self) -> None:
+        with self.runner.isolated_filesystem():
+            legacy_completed = self._legacy_plan_data(
+                "reporting_cleanup",
+                status="completed",
+                scope=["src/reporting"],
+            )
+            legacy_completed["backlog"][0].pop("tests")
+            legacy_completed["sprints"][0].pop("focus_paths")
+            self._write_legacy_plan(
+                "reporting_cleanup",
+                plan_data=legacy_completed,
+                status_data=self._legacy_status("completed"),
+            )
+
+            result = self.runner.invoke(app, ["upgrade", ".", "--no-wizard"])
+            self.assertEqual(result.exit_code, 0, result.output)
+
+            migrated_plan = yaml.safe_load(
+                (get_default_plans_root() / "reporting_cleanup" / "plan.yaml").read_text(encoding="utf-8")
+            )
+            migrated_status = yaml.safe_load(
+                get_status_path("reporting_cleanup").read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(migrated_plan["plan"]["status"], "completed")
+            self.assertEqual(migrated_plan["backlog"][0]["tests"], [])
+            self.assertEqual(migrated_plan["sprints"][0]["focus_paths"], ["src/reporting"])
+            self.assertIn("activation", migrated_status)
+            self.assertIn("verification", migrated_status)
+            self.assertIn("remaining_steps", migrated_status)
+            self.assertIn("handoff", migrated_status)
+
+    def test_upgrade_and_check_handle_mixed_legacy_repo(self) -> None:
+        with self.runner.isolated_filesystem():
+            placeholder = {
+                "plan": {
+                    "name": "gateway_agent_ui",
+                    "status": "placeholder",
+                    "created": "2025-01-01",
+                    "priority": "medium",
+                },
+                "objective": "Gateway agent UI",
+                "scope": {"included": ["src/gateway/ui"]},
+            }
+            self._write_legacy_plan(
+                "gateway_agent_ui",
+                plan_data=placeholder,
+                status_data=self._legacy_status(),
+            )
+
+            missing_focus_paths = self._legacy_plan_data(
+                "draft_missing_focus_paths",
+                status="draft",
+                scope=["src/draft"],
+            )
+            missing_focus_paths["sprints"][0].pop("focus_paths")
+            self._write_legacy_plan(
+                "draft_missing_focus_paths",
+                plan_data=missing_focus_paths,
+                status_data=self._legacy_status(),
+            )
+
+            completed_missing_tests = self._legacy_plan_data(
+                "completed_missing_tests",
+                status="completed",
+                scope=["src/completed"],
+            )
+            completed_missing_tests["backlog"][0].pop("tests")
+            self._write_legacy_plan(
+                "completed_missing_tests",
+                plan_data=completed_missing_tests,
+                status_data=self._legacy_status("completed"),
+            )
+
+            self._write_legacy_plan(
+                "malformed_verify_yaml",
+                raw_plan="\n".join([
+                    "plan:",
+                    "  name: malformed_verify_yaml",
+                    "  status: draft",
+                    "  created: '2025-01-01'",
+                    "  priority: medium",
+                    "objective: Malformed verify commands",
+                    "scope:",
+                    "  included:",
+                    "    - src/bad",
+                    "phases:",
+                    "  - name: review",
+                    "    tasks:",
+                    "      - inspect",
+                    "backlog:",
+                    "  - id: BL-001",
+                    "    title: Inspect",
+                    "    type: analysis",
+                    "    phase: review",
+                    "    scope:",
+                    "      - src/bad",
+                    "    depends_on: []",
+                    "    deliverables:",
+                    "      - notes",
+                    "    tests:",
+                    "      - inspect",
+                    "    done_when:",
+                    "      - inspected",
+                    "sprints:",
+                    "  - id: SPRINT-01",
+                    "    name: Sprint 1",
+                    "    goal: Inspect",
+                    "    backlog_items:",
+                    "      - BL-001",
+                    "    focus_paths:",
+                    "      - src/bad",
+                    "    exit_criteria:",
+                    "      - inspected",
+                    "risks: []",
+                    "dependencies: []",
+                    "verify_commands:",
+                    "  - [python -c \"print('a: b')\"",
+                    "",
+                ]),
+                status_data=self._legacy_status(),
+            )
+            Path("docs/planning").mkdir(parents=True, exist_ok=True)
+            Path("docs/planning/active_plans.yaml").write_text(
+                "\n".join([
+                    "active_plans:",
+                    "  - name: gateway_agent_ui",
+                    "    status: placeholder",
+                    "  - name: draft_missing_focus_paths",
+                    "    status: draft",
+                    "  - name: completed_missing_tests",
+                    "    status: completed",
+                    "  - name: malformed_verify_yaml",
+                    "    status: draft",
+                    "",
+                ]),
+                encoding="utf-8",
+            )
+
+            upgrade_result = self.runner.invoke(app, ["upgrade", ".", "--no-wizard"])
+            self.assertEqual(upgrade_result.exit_code, 0, upgrade_result.output)
+            self.assertIn("Normalized plans:", upgrade_result.output)
+            self.assertIn("Suspended for review:", upgrade_result.output)
+            self.assertIn("Manual review needed:", upgrade_result.output)
+            self.assertTrue((get_default_plans_root() / "gateway_agent_ui" / "plan.yaml").exists())
+            self.assertTrue(get_status_path("completed_missing_tests").exists())
+
+            check_result = self.runner.invoke(app, ["check"])
+            self.assertNotEqual(check_result.exit_code, 0)
+            self.assertEqual(check_result.output.count("Structure valid"), 3)
+            self.assertIn("Invalid YAML in plan.yaml:", check_result.output)
+            self.assertIn("malformed_verify_yaml", check_result.output)
+            self.assertNotIn("Traceback", check_result.output)
 
     def test_version_option(self) -> None:
         result = self.runner.invoke(app, ["--version"])

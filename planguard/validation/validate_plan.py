@@ -48,6 +48,15 @@ REQUIRED_BACKLOG_FIELDS = ["id", "title", "type", "phase", "scope", "depends_on"
 REQUIRED_SPRINT_FIELDS = ["id", "name", "goal", "backlog_items", "focus_paths", "exit_criteria"]
 
 
+def format_yaml_error(path: Path, exc: yaml.YAMLError) -> str:
+    """Return a concise, location-aware YAML parse error message."""
+    mark = getattr(exc, "problem_mark", None)
+    problem = getattr(exc, "problem", None) or str(exc).splitlines()[0]
+    if mark is None:
+        return f"{path}: {problem}"
+    return f"{path}:{mark.line + 1}:{mark.column + 1}: {problem}"
+
+
 def discover_plan_dirs(docs_dir: Path) -> list[Path]:
     """Find all directories under docs_dir that contain a plan.yaml."""
     if not docs_dir.is_dir():
@@ -77,7 +86,7 @@ def validate_plan(plan_dir: Path) -> tuple[bool, list[str]]:
     try:
         data = yaml.safe_load(plan_path.read_text(encoding="utf-8")) or {}
     except yaml.YAMLError as exc:
-        messages.append(f"Invalid YAML in plan.yaml: {exc}")
+        messages.append(f"Invalid YAML in plan.yaml: {format_yaml_error(plan_path, exc)}")
         return False, messages
 
     # Check required top-level sections.
@@ -169,7 +178,7 @@ def validate_plan(plan_dir: Path) -> tuple[bool, list[str]]:
         try:
             status_data = yaml.safe_load(status_path.read_text(encoding="utf-8")) or {}
         except yaml.YAMLError as exc:
-            messages.append(f"Invalid YAML in status.yaml: {exc}")
+            messages.append(f"Invalid YAML in status.yaml: {format_yaml_error(status_path, exc)}")
             return False, messages
 
         for section in REQUIRED_STATUS_SECTIONS:

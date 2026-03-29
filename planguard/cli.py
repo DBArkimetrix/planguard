@@ -50,6 +50,7 @@ from planguard.safety.git_state import (
 from planguard.safety.guard import run_guard
 from planguard.validation.validate_plan import (
     discover_plan_dirs,
+    format_yaml_error,
     validate_plan,
     validate_docs,
 )
@@ -72,6 +73,20 @@ app = typer.Typer(
 _FRAMEWORK_MARKER = "<!-- agent-engineering-framework -->"
 _IGNORE_BLOCK_HEADER = "# PlanGuard local artifacts"
 _STATE_IGNORE_ENTRY = ".planguard/state/"
+_VALID_PLAN_STATUSES = {"draft", "active", "suspended", "completed", "archived"}
+_LEGACY_STATUS_MAP = {
+    "placeholder": "suspended",
+    "deferred": "suspended",
+}
+_TERMINAL_PLAN_STATUSES = {"completed", "archived"}
+_DEFAULT_REMAINING_STEPS = [
+    "Review and refine plan",
+    "Run checks (planguard check)",
+    "Activate plan (planguard activate)",
+    "Implement",
+    "Verify (planguard verify)",
+    "Complete plan (planguard complete)",
+]
 
 
 def _version_callback(value: bool) -> None:
@@ -368,6 +383,421 @@ def _write_status_yaml(plan_dir: Path, data: dict) -> None:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _coerce_string_list(value) -> list[str]:
+    if isinstance(value, list):
+        result: list[str] = []
+        for item in value:
+            text = str(item).strip()
+            if text:
+                result.append(text)
+        return result
+    if value is None:
+        return []
+    text = str(value).strip()
+    return [text] if text else []
+
+
+def _dedupe_preserving_order(values: list[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if value in seen:
+            continue
+        deduped.append(value)
+        seen.add(value)
+    return deduped
+
+
+def _phase_for_status(status: str) -> str:
+    return {
+        "draft": "planning",
+        "active": "implementation",
+        "suspended": "suspended",
+        "completed": "completed",
+        "archived": "archived",
+    }.get(status, "planning")
+
+
+def _progress_for_status(status: str) -> int:
+    return {
+        "draft": 0,
+        "active": 25,
+        "suspended": 25,
+        "completed": 100,
+        "archived": 100,
+    }.get(status, 0)
+
+
+def _infer_scope_paths(data: dict, fallback_scope: str) -> tuple[list[str], bool]:
+    inferred: list[str] = []
+
+    scope = data.get("scope", {})
+    if isinstance(scope, dict):
+        inferred.extend(_coerce_string_list(scope.get("included")))
+    else:
+        inferred.extend(_coerce_string_list(scope))
+
+    backlog = data.get("backlog", [])
+    if isinstance(backlog, list):
+        for item in backlog:
+            if isinstance(item, dict):
+                inferred.extend(_coerce_string_list(item.get("scope")))
+
+    sprints = data.get("sprints", [])
+    if isinstance(sprints, list):
+        for sprint in sprints:
+            if isinstance(sprint, dict):
+                inferred.extend(_coerce_string_list(sprint.get("focus_paths")))
+
+    normalized = _dedupe_preserving_order(inferred)
+    if normalized:
+        return normalized, False
+    return [fallback_scope], True
+
+
+def _normalize_phases(phases, backlog: list[dict], *, needs_review: bool) -> list[dict]:
+    normalized: list[dict] = []
+    if isinstance(phases, list):
+        for index, phase in enumerate(phases, start=1):
+            if not isinstance(phase, dict):
+                continue
+            name = str(phase.get("name") or f"phase_{index}").strip() or f"phase_{index}"
+            tasks = _coerce_string_list(phase.get("tasks"))
+            if not tasks:
+                tasks = ["Review migrated legacy plan content"]
+            normalized.append({
+                "name": name,
+                "tasks": tasks,
+            })
+
+    if not normalized:
+        phase_names = _dedupe_preserving_order([
+            str(item.get("phase", "")).strip()
+            for item in backlog
+            if isinstance(item, dict) and str(item.get("phase", "")).strip()
+        ])
+        normalized = [{"name": name, "tasks": ["Review migrated legacy plan content"]} for name in phase_names]
+
+    if not normalized:
+        task = "Review migrated placeholder content before resuming execution" if needs_review else "Review migrated legacy plan content"
+        normalized = [{"name": "legacy_review", "tasks": [task]}]
+
+    return normalized
+
+
+def _normalize_backlog(
+    backlog,
+    *,
+    included_scope: list[str],
+    default_phase: str,
+    needs_review: bool,
+) -> list[dict]:
+    normalized: list[dict] = []
+    if isinstance(backlog, list):
+        for index, item in enumerate(backlog, start=1):
+            if not isinstance(item, dict):
+                continue
+            title = str(item.get("title") or f"Legacy backlog item {index}").strip() or f"Legacy backlog item {index}"
+            deliverables = _coerce_string_list(item.get("deliverables")) or [title]
+            done_when = _coerce_string_list(item.get("done_when")) or [f"{title} is preserved in the migrated plan"]
+            normalized.append({
+                "id": str(item.get("id") or f"LEGACY-{index:03d}"),
+                "title": title,
+                "type": str(item.get("type") or "task"),
+                "phase": str(item.get("phase") or default_phase),
+                "scope": _coerce_string_list(item.get("scope")) or list(included_scope),
+                "depends_on": _coerce_string_list(item.get("depends_on")),
+                "deliverables": deliverables,
+                "tests": _coerce_string_list(item.get("tests")),
+                "done_when": done_when,
+            })
+
+    if normalized:
+        return normalized
+
+    title = "Review migrated placeholder contents" if needs_review else "Review migrated legacy plan contents"
+    done_when = (
+        ["The plan has concrete backlog, sprint, and verification details before execution resumes"]
+        if needs_review
+        else ["The migrated plan content has been reviewed and preserved"]
+    )
+    return [{
+        "id": "LEGACY-REVIEW",
+        "title": title,
+        "type": "documentation",
+        "phase": default_phase,
+        "scope": list(included_scope),
+        "depends_on": [],
+        "deliverables": ["Legacy plan content is preserved for follow-up review"],
+        "tests": ["Review migrated content and add concrete verification steps before resuming"],
+        "done_when": done_when,
+    }]
+
+
+def _normalize_sprints(
+    sprints,
+    *,
+    backlog: list[dict],
+    included_scope: list[str],
+    needs_review: bool,
+) -> list[dict]:
+    backlog_by_id = {item["id"]: item for item in backlog}
+    normalized: list[dict] = []
+    if isinstance(sprints, list):
+        for index, sprint in enumerate(sprints, start=1):
+            if not isinstance(sprint, dict):
+                continue
+            backlog_items = _coerce_string_list(sprint.get("backlog_items"))
+            if not backlog_items:
+                backlog_items = [item["id"] for item in backlog]
+
+            focus_paths = _coerce_string_list(sprint.get("focus_paths"))
+            if not focus_paths:
+                for backlog_id in backlog_items:
+                    focus_paths.extend(_coerce_string_list(backlog_by_id.get(backlog_id, {}).get("scope")))
+                focus_paths = _dedupe_preserving_order(focus_paths) or list(included_scope)
+
+            exit_criteria = _coerce_string_list(sprint.get("exit_criteria"))
+            if not exit_criteria:
+                for backlog_id in backlog_items:
+                    exit_criteria.extend(_coerce_string_list(backlog_by_id.get(backlog_id, {}).get("done_when")))
+                exit_criteria = _dedupe_preserving_order(exit_criteria) or ["The sprint goals are reviewed"]
+
+            normalized.append({
+                "id": str(sprint.get("id") or f"SPRINT-{index:02d}"),
+                "name": str(sprint.get("name") or f"Legacy Sprint {index}"),
+                "goal": str(sprint.get("goal") or "Review migrated legacy work"),
+                "backlog_items": backlog_items,
+                "focus_paths": focus_paths,
+                "exit_criteria": exit_criteria,
+            })
+
+    if normalized:
+        return normalized
+
+    goal = "Review migrated placeholder plan before resuming execution" if needs_review else "Review migrated legacy plan"
+    exit_criteria = _dedupe_preserving_order([
+        criterion
+        for item in backlog
+        for criterion in _coerce_string_list(item.get("done_when"))
+    ]) or ["The migrated plan has been reviewed"]
+    return [{
+        "id": "SPRINT-LEGACY",
+        "name": "Legacy review",
+        "goal": goal,
+        "backlog_items": [item["id"] for item in backlog],
+        "focus_paths": list(included_scope),
+        "exit_criteria": exit_criteria,
+    }]
+
+
+def _normalize_status_data(status_data, *, plan_status: str) -> dict:
+    if not isinstance(status_data, dict):
+        status_data = {}
+
+    status_section = status_data.get("status")
+    if not isinstance(status_section, dict):
+        status_section = {}
+    expected_phase = _phase_for_status(plan_status)
+    if not status_section.get("phase") or plan_status in {"active", "suspended", "completed", "archived"}:
+        status_section["phase"] = expected_phase
+    current_progress = status_section.get("progress_percent", 0)
+    try:
+        current_progress = int(current_progress)
+    except (TypeError, ValueError):
+        current_progress = 0
+    status_section["progress_percent"] = max(current_progress, _progress_for_status(plan_status))
+    status_data["status"] = status_section
+
+    activation = status_data.get("activation")
+    if not isinstance(activation, dict):
+        activation = {}
+    activation.setdefault("activated_at", "")
+    activation.setdefault("git_branch", "")
+    activation.setdefault("git_head", "")
+    activation.setdefault("baseline_changed_files", [])
+    activation.setdefault("baseline_fingerprints", {})
+    status_data["activation"] = activation
+
+    verification = status_data.get("verification")
+    if not isinstance(verification, dict):
+        verification = {}
+    verification.setdefault("passed", False)
+    verification.setdefault("last_run", "")
+    verification.setdefault("git_branch", "")
+    verification.setdefault("git_head", "")
+    verification.setdefault("changed_files", [])
+    verification.setdefault("fingerprints", {})
+    verification.setdefault("commands", [])
+    status_data["verification"] = verification
+
+    completed_steps = status_data.get("completed_steps")
+    status_data["completed_steps"] = completed_steps if isinstance(completed_steps, list) else []
+
+    remaining_steps = status_data.get("remaining_steps")
+    if not isinstance(remaining_steps, list):
+        remaining_steps = [] if plan_status in _TERMINAL_PLAN_STATUSES else list(_DEFAULT_REMAINING_STEPS)
+    status_data["remaining_steps"] = remaining_steps
+
+    blockers = status_data.get("blockers")
+    status_data["blockers"] = blockers if isinstance(blockers, list) else []
+
+    handoff = status_data.get("handoff")
+    if not isinstance(handoff, dict):
+        handoff = {}
+    handoff.setdefault("summary", "")
+    notes = handoff.get("notes")
+    handoff["notes"] = notes if isinstance(notes, list) else _coerce_string_list(notes)
+    status_data["handoff"] = handoff
+
+    return status_data
+
+
+def _sync_registry_status(base: Path, plan_name: str, status: str) -> None:
+    registry_path = get_registry_path(base)
+    registry_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        registry = yaml.safe_load(registry_path.read_text(encoding="utf-8")) or {}
+    except Exception:
+        registry = {}
+
+    active_plans = registry.get("active_plans", [])
+    if not isinstance(active_plans, list):
+        active_plans = []
+
+    for entry in active_plans:
+        if isinstance(entry, dict) and entry.get("name") == plan_name:
+            entry["status"] = status
+            break
+    else:
+        active_plans.append({"name": plan_name, "status": status})
+
+    registry["active_plans"] = active_plans
+    registry_path.write_text(
+        yaml.safe_dump(registry, sort_keys=False, default_flow_style=False),
+        encoding="utf-8",
+    )
+
+
+def _normalize_legacy_plan(plan_dir: Path, base: Path) -> dict:
+    summary = {
+        "name": plan_dir.name,
+        "normalized": False,
+        "suspended": False,
+        "manual_review": [],
+        "notes": [],
+    }
+    plan_path = plan_dir / "plan.yaml"
+
+    try:
+        data = yaml.safe_load(plan_path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError as exc:
+        summary["manual_review"].append(f"plan.yaml parse error: {format_yaml_error(plan_path, exc)}")
+        return summary
+
+    if not isinstance(data, dict):
+        summary["manual_review"].append(f"plan.yaml must contain a mapping: {plan_path}")
+        return summary
+
+    original_dump = yaml.safe_dump(data, sort_keys=False, default_flow_style=False)
+    plan_meta = data.get("plan")
+    if not isinstance(plan_meta, dict):
+        plan_meta = {}
+    original_status = str(plan_meta.get("status") or data.get("status") or "draft").strip().lower() or "draft"
+    normalized_status = _LEGACY_STATUS_MAP.get(original_status, original_status)
+    if normalized_status not in _VALID_PLAN_STATUSES:
+        summary["notes"].append(f"unknown legacy status '{original_status}' normalized to draft")
+        normalized_status = "draft"
+    if normalized_status != original_status:
+        summary["notes"].append(f"status {original_status} -> {normalized_status}")
+        summary["suspended"] = normalized_status == "suspended"
+
+    fallback_scope = str((plan_dir / "plan.yaml").relative_to(base)).replace("\\", "/")
+    included_scope, used_fallback_scope = _infer_scope_paths(data, fallback_scope)
+    needs_review = normalized_status == "suspended"
+    if used_fallback_scope:
+        needs_review = True
+        summary["notes"].append("scope could not be inferred; restricted to the migrated plan file until manual review")
+
+    phases = _normalize_phases(data.get("phases"), data.get("backlog") if isinstance(data.get("backlog"), list) else [], needs_review=needs_review)
+    default_phase = phases[0]["name"]
+    backlog = _normalize_backlog(
+        data.get("backlog"),
+        included_scope=included_scope,
+        default_phase=default_phase,
+        needs_review=needs_review,
+    )
+    sprints = _normalize_sprints(
+        data.get("sprints"),
+        backlog=backlog,
+        included_scope=included_scope,
+        needs_review=needs_review,
+    )
+
+    if needs_review and normalized_status != "suspended":
+        normalized_status = "suspended"
+        summary["suspended"] = True
+        summary["notes"].append("status changed to suspended until the migrated plan is reviewed")
+
+    plan_meta.setdefault("name", plan_dir.name)
+    plan_meta["status"] = normalized_status
+    plan_meta.setdefault("created", _now_iso()[:10])
+    plan_meta.setdefault("priority", "medium")
+    plan_meta.setdefault("owner", "unassigned")
+    data["plan"] = plan_meta
+    data["objective"] = data.get("objective") or plan_dir.name.replace("_", " ")
+    data["scope"] = {
+        "included": included_scope,
+        "excluded": _coerce_string_list(data.get("scope", {}).get("excluded") if isinstance(data.get("scope"), dict) else []),
+    }
+    data["phases"] = phases
+    data["backlog"] = backlog
+    data["sprints"] = sprints
+    data["risks"] = data.get("risks") if isinstance(data.get("risks"), list) else []
+    data["dependencies"] = data.get("dependencies") if isinstance(data.get("dependencies"), list) else []
+
+    migration = data.get("migration")
+    if not isinstance(migration, dict):
+        migration = {}
+    migration["upgraded_from_legacy"] = True
+    migration.setdefault("normalized_at", _now_iso())
+    if summary["notes"]:
+        migration["notes"] = _dedupe_preserving_order(_coerce_string_list(migration.get("notes")) + summary["notes"])
+    if needs_review:
+        migration["needs_manual_review"] = True
+    data["migration"] = migration
+
+    normalized_dump = yaml.safe_dump(data, sort_keys=False, default_flow_style=False)
+    if normalized_dump != original_dump:
+        _write_plan_yaml(plan_dir, data)
+        summary["normalized"] = True
+
+    _sync_registry_status(base, plan_dir.name, normalized_status)
+
+    status_path = get_status_path(plan_dir.name, base)
+    if not status_path.exists():
+        legacy_status = plan_dir / "status.yaml"
+        if legacy_status.exists():
+            status_path = legacy_status
+
+    status_data: dict = {}
+    if status_path.exists():
+        try:
+            status_data = yaml.safe_load(status_path.read_text(encoding="utf-8")) or {}
+        except yaml.YAMLError as exc:
+            summary["manual_review"].append(f"status.yaml parse error: {format_yaml_error(status_path, exc)}")
+            return summary
+
+    existing_status_dump = yaml.safe_dump(status_data, sort_keys=False, default_flow_style=False)
+    normalized_status_data = _normalize_status_data(status_data, plan_status=normalized_status)
+    normalized_status_dump = yaml.safe_dump(normalized_status_data, sort_keys=False, default_flow_style=False)
+    if normalized_status_dump != existing_status_dump or not status_path.exists():
+        _write_status_yaml(plan_dir, normalized_status_data)
+        summary["normalized"] = True
+
+    return summary
 
 
 def _capture_git_state(scope_paths: list[str] | None = None) -> dict:
@@ -697,6 +1127,7 @@ def upgrade(
     created.extend(_ensure_runtime_state(base))
     created.extend(_ensure_local_storage_ignored(base, ignore_root))
     migrated: list[str] = []
+    normalized_summaries: list[dict] = []
 
     if refresh_agents:
         agents_path = base / "AGENTS.md"
@@ -738,7 +1169,10 @@ def upgrade(
         elif (base / ".planguard" / "config.yaml").exists():
             print(f"[dim]plans_root already set to {current_plans_root}[/dim]")
 
-    migrated.extend(_migrate_legacy_runtime_state(base, discover_plan_dirs(base / current_plans_root)))
+    plan_dirs = discover_plan_dirs(base / current_plans_root)
+    migrated.extend(_migrate_legacy_runtime_state(base, plan_dirs))
+    plan_dirs = discover_plan_dirs(base / current_plans_root)
+    normalized_summaries = [_normalize_legacy_plan(plan_dir, base) for plan_dir in plan_dirs]
 
     if created:
         print()
@@ -751,6 +1185,34 @@ def upgrade(
         print("[green]Migrated plans:[/green]")
         for item in migrated:
             print(f"  {item}")
+
+    print()
+    print("[bold]Upgrade summary:[/bold]")
+    print(f"  Plans scanned: {len(plan_dirs)}")
+
+    normalized = [item for item in normalized_summaries if item["normalized"]]
+    suspended = [item for item in normalized_summaries if item["suspended"]]
+    manual_review = [item for item in normalized_summaries if item["manual_review"]]
+
+    if normalized:
+        print("[green]  Normalized plans:[/green]")
+        for item in normalized:
+            details = f" ({'; '.join(item['notes'])})" if item["notes"] else ""
+            print(f"    {item['name']}{details}")
+    else:
+        print("[dim]  No legacy normalization changes were needed[/dim]")
+
+    if suspended:
+        print("[yellow]  Suspended for review:[/yellow]")
+        for item in suspended:
+            details = f" ({'; '.join(item['notes'])})" if item["notes"] else ""
+            print(f"    {item['name']}{details}")
+
+    if manual_review:
+        print("[yellow]  Manual review needed:[/yellow]")
+        for item in manual_review:
+            for note in item["manual_review"]:
+                print(f"    {item['name']}: {note}")
 
     print()
     print("[bold]Next step:[/bold] Run [cyan]planguard check[/cyan] to confirm the upgraded repo state.")
@@ -977,10 +1439,6 @@ def _check_single(plan_dir: Path) -> bool:
     print(f"\n[bold]Plan: {name}[/bold]")
 
     all_ok = True
-    data = _read_plan_yaml(plan_dir)
-    status = data.get("plan", {}).get("status", "unknown")
-    current_snapshot = _capture_git_state()
-    diff_paths = _files_changed_since_activation(plan_dir, current_snapshot) if status == "active" else []
 
     # 1. Validation.
     ok, messages = validate_plan(plan_dir)
@@ -991,6 +1449,22 @@ def _check_single(plan_dir: Path) -> bool:
         for m in messages:
             print(f"    {m}")
         all_ok = False
+
+    if any(message.startswith("Invalid YAML in plan.yaml:") for message in messages):
+        print("[dim]  Status: unknown[/dim]")
+        return False
+
+    try:
+        data = _read_plan_yaml(plan_dir)
+    except yaml.YAMLError as exc:
+        print(f"{_FAIL} Unable to read plan.yaml")
+        print(f"    {format_yaml_error(plan_dir / 'plan.yaml', exc)}")
+        print("[dim]  Status: unknown[/dim]")
+        return False
+
+    status = data.get("plan", {}).get("status", "unknown")
+    current_snapshot = _capture_git_state() if status == "active" else {}
+    diff_paths = _files_changed_since_activation(plan_dir, current_snapshot) if status == "active" else []
 
     # 2. Risk score.
     total, risk_status, details = compute_risk_score(plan_dir)

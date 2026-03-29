@@ -65,6 +65,14 @@ planguard check
 
 On legacy repositories that still keep plans under `docs/`, `planguard upgrade --no-wizard` now migrates them to the local default `.planguard/plans/`, refreshes the managed AGENTS workflow, and keeps runtime state under `.planguard/state/`.
 
+Upgrade also normalizes common legacy plan shapes so that a follow-up `planguard check` is usable immediately:
+
+- legacy `placeholder` or `deferred` plans are converted into `suspended` review plans instead of remaining executable-but-invalid
+- older migrated plans get safe mechanical backfills for fields such as sprint `focus_paths`, backlog `tests`, and newer runtime status sections
+- malformed `plan.yaml` files are not silently rewritten; `planguard check` reports them as per-plan parse failures with file and line information and continues checking the remaining plans
+
+During upgrade, the CLI prints a summary of migrated plans, which plans were normalized, which ones were suspended for review, and which ones still need manual intervention.
+
 ### Manual Fallback
 
 If you only need to refresh the managed AGENTS workflow without migrating plan storage, the manual fallback is:
