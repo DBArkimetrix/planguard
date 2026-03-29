@@ -16,6 +16,17 @@ from rich.panel import Panel
 from rich.table import Table
 
 from planguard import __version__
+from planguard.config import (
+    find_project_root_for_plan,
+    get_default_plans_root,
+    get_log_path,
+    get_plans_root,
+    get_registry_path,
+    get_state_root,
+    get_status_path,
+    has_legacy_docs_plans,
+    load_config,
+)
 from planguard.context.project_context import (
     has_context,
     init_context,
@@ -30,7 +41,12 @@ from planguard.planning.detect_project import detect_project
 from planguard.planning.generate_plan import generate_plan
 from planguard.safety.check_policies import check_boundary_violations, check_policies
 from planguard.safety.compute_risk_score import compute_risk_score
-from planguard.safety.git_state import get_git_snapshot
+from planguard.safety.git_state import (
+    build_fingerprints,
+    detect_git_renames,
+    get_git_snapshot,
+    resolve_renames,
+)
 from planguard.safety.guard import run_guard
 from planguard.validation.validate_plan import (
     discover_plan_dirs,
@@ -54,6 +70,8 @@ app = typer.Typer(
 # ---------------------------------------------------------------------------
 
 _FRAMEWORK_MARKER = "<!-- agent-engineering-framework -->"
+_IGNORE_BLOCK_HEADER = "# PlanGuard local artifacts"
+_STATE_IGNORE_ENTRY = ".planguard/state/"
 
 
 def _version_callback(value: bool) -> None:
@@ -127,8 +145,13 @@ def _build_workflow_section(info: "ProjectInfo | None" = None) -> str:
         "After implementation, agents must:",
         "",
         "1. Run verification: `planguard verify <plan_name>`",
-        "2. Update status.yaml with completed steps and handoff notes",
+        "2. Update runtime status and handoff notes",
         "3. Mark the plan complete: `planguard complete <plan_name>`",
+        "",
+        "Useful variations:",
+        "",
+        "- Use `planguard plan --template <name>` for docs-only, refactor, schema-change, and service-integration work",
+        "- Use `planguard suspend <plan_name>` / `planguard resume <plan_name>` when overlapping work needs to pause safely",
         "",
         "### Rules",
         "",
@@ -154,7 +177,158 @@ def _build_workflow_section(info: "ProjectInfo | None" = None) -> str:
 
 
 def _docs_dir() -> Path:
-    return Path("docs")
+    return get_plans_root()
+
+
+def _replace_framework_section(existing: str, workflow_section: str) -> str:
+    """Replace the managed framework section while preserving user content."""
+    prefix, marker, _ = existing.partition(_FRAMEWORK_MARKER)
+    if not marker:
+        return existing.rstrip() + "\n\n" + workflow_section
+    prefix = prefix.rstrip()
+    if not prefix:
+        return workflow_section + "\n"
+    return prefix + "\n\n" + workflow_section + "\n"
+
+
+def _ensure_plan_storage(base: Path, plans_root: Path) -> list[Path]:
+    created: list[Path] = []
+    plan_root = base / plans_root
+    if not plan_root.exists():
+        plan_root.mkdir(parents=True, exist_ok=True)
+        created.append(plan_root)
+    return created
+
+
+def _ensure_local_storage_ignored(base: Path, plans_root: Path) -> list[Path]:
+    """Ensure local PlanGuard plans and runtime state stay out of commits."""
+    plan_ignore_entry = str(plans_root).replace("\\", "/").rstrip("/") + "/"
+    ignore_entries = [
+        plan_ignore_entry,
+        _STATE_IGNORE_ENTRY,
+    ]
+    gitignore_path = base / ".gitignore"
+    if gitignore_path.exists():
+        lines = gitignore_path.read_text(encoding="utf-8-sig").splitlines()
+    else:
+        lines = []
+
+    if all(entry in lines for entry in ignore_entries):
+        return []
+
+    updated = list(lines)
+    if updated and updated[-1] != "":
+        updated.append("")
+    if _IGNORE_BLOCK_HEADER not in updated:
+        updated.append(_IGNORE_BLOCK_HEADER)
+    for entry in ignore_entries:
+        if entry not in updated:
+            updated.append(entry)
+
+    gitignore_path.write_text("\n".join(updated).rstrip() + "\n", encoding="utf-8")
+    return [gitignore_path]
+
+
+def _ensure_runtime_state(base: Path) -> list[Path]:
+    created: list[Path] = []
+    state_root = get_state_root(base)
+    for path in [state_root, state_root / "plans"]:
+        if not path.exists():
+            path.mkdir(parents=True, exist_ok=True)
+            created.append(path)
+
+    registry = get_registry_path(base)
+    if not registry.exists():
+        legacy_candidates = [
+            base / "docs" / "planning" / "active_plans.yaml",
+            base / get_plans_root(base) / "planning" / "active_plans.yaml",
+        ]
+        for legacy_registry in legacy_candidates:
+            if legacy_registry.exists():
+                registry.write_text(legacy_registry.read_text(encoding="utf-8"), encoding="utf-8")
+                break
+        else:
+            registry.write_text("active_plans: []\n", encoding="utf-8")
+        created.append(registry)
+    return created
+
+
+def _migrate_legacy_runtime_state(base: Path, plan_dirs: list[Path]) -> list[str]:
+    migrated: list[str] = []
+
+    registry = get_registry_path(base)
+    legacy_registry_candidates = [
+        base / "docs" / "planning" / "active_plans.yaml",
+        base / get_plans_root(base) / "planning" / "active_plans.yaml",
+    ]
+    for legacy_registry in legacy_registry_candidates:
+        if not legacy_registry.exists() or legacy_registry == registry:
+            continue
+        if not registry.exists():
+            registry.parent.mkdir(parents=True, exist_ok=True)
+            legacy_registry.rename(registry)
+            migrated.append(f"{legacy_registry.relative_to(base)} -> {registry.relative_to(base)}")
+        else:
+            legacy_registry.unlink()
+            migrated.append(f"{legacy_registry.relative_to(base)} removed")
+        break
+
+    for plan_dir in plan_dirs:
+        legacy_status = plan_dir / "status.yaml"
+        if not legacy_status.exists():
+            continue
+        runtime_status = get_status_path(plan_dir.name, base)
+        if runtime_status.exists():
+            continue
+        runtime_status.parent.mkdir(parents=True, exist_ok=True)
+        legacy_status.rename(runtime_status)
+        migrated.append(f"{legacy_status.relative_to(base)} -> {runtime_status.relative_to(base)}")
+
+    legacy_log = base / ".planguard" / "log.jsonl"
+    runtime_log = get_log_path(base)
+    if legacy_log.exists():
+        if not runtime_log.exists():
+            runtime_log.parent.mkdir(parents=True, exist_ok=True)
+            legacy_log.rename(runtime_log)
+            migrated.append(f"{legacy_log.relative_to(base)} -> {runtime_log.relative_to(base)}")
+        else:
+            legacy_log.unlink()
+            migrated.append(f"{legacy_log.relative_to(base)} removed")
+
+    return migrated
+
+
+def _write_config(base: Path, *, plans_root: str) -> None:
+    config_dir = base / ".planguard"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    config_path = config_dir / "config.yaml"
+    data = load_config(base) if config_path.exists() else {}
+    data["plans_root"] = plans_root
+    config_path.write_text(
+        yaml.safe_dump(data, sort_keys=False, default_flow_style=False),
+        encoding="utf-8",
+    )
+
+
+def _clear_default_plans_root_config(base: Path) -> None:
+    """Remove plans_root from config when the repo uses the built-in default."""
+    config_path = base / ".planguard" / "config.yaml"
+    if not config_path.exists():
+        return
+    try:
+        data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return
+    if not isinstance(data, dict) or "plans_root" not in data:
+        return
+    data.pop("plans_root", None)
+    if data:
+        config_path.write_text(
+            yaml.safe_dump(data, sort_keys=False, default_flow_style=False),
+            encoding="utf-8",
+        )
+    else:
+        config_path.unlink()
 
 
 def _read_plan_yaml(plan_dir: Path) -> dict:
@@ -172,14 +346,21 @@ def _write_plan_yaml(plan_dir: Path, data: dict) -> None:
 
 
 def _read_status_yaml(plan_dir: Path) -> dict:
-    status_path = plan_dir / "status.yaml"
+    root = find_project_root_for_plan(plan_dir)
+    status_path = get_status_path(plan_dir.name, root)
     if not status_path.exists():
-        return {}
+        legacy_path = plan_dir / "status.yaml"
+        if not legacy_path.exists():
+            return {}
+        status_path = legacy_path
     return yaml.safe_load(status_path.read_text(encoding="utf-8")) or {}
 
 
 def _write_status_yaml(plan_dir: Path, data: dict) -> None:
-    (plan_dir / "status.yaml").write_text(
+    root = find_project_root_for_plan(plan_dir)
+    status_path = get_status_path(plan_dir.name, root)
+    status_path.parent.mkdir(parents=True, exist_ok=True)
+    status_path.write_text(
         yaml.safe_dump(data, sort_keys=False, default_flow_style=False),
         encoding="utf-8",
     )
@@ -189,8 +370,8 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _capture_git_state() -> dict:
-    snapshot = get_git_snapshot()
+def _capture_git_state(scope_paths: list[str] | None = None) -> dict:
+    snapshot = get_git_snapshot(scope_paths=scope_paths)
     return {
         "is_git_repo": snapshot.get("is_git_repo", False),
         "git_branch": snapshot.get("branch", ""),
@@ -202,11 +383,16 @@ def _capture_git_state() -> dict:
 
 
 def _plan_bookkeeping_files(plan_dir: Path) -> set[str]:
+    root = str(_docs_dir())
+    repo_root = find_project_root_for_plan(plan_dir)
     return {
-        f"docs/{plan_dir.name}/plan.yaml",
-        f"docs/{plan_dir.name}/status.yaml",
-        "docs/planning/active_plans.yaml",
+        f"{root}/{plan_dir.name}",
+        f"{root}/{plan_dir.name}/plan.yaml",
+        str(get_status_path(plan_dir.name, repo_root).relative_to(repo_root)),
+        str(get_registry_path(repo_root).relative_to(repo_root)),
+        str(get_log_path(repo_root).relative_to(repo_root)),
         ".planguard/log.jsonl",
+        "docs/planning/active_plans.yaml",
     }
 
 
@@ -219,9 +405,29 @@ def _files_changed_since_activation(plan_dir: Path, current_snapshot: dict) -> l
     if not baseline:
         return sorted(set(current_snapshot.get("changed_files", [])))
 
+    # Apply declared renames so intentional moves don't show as changes.
+    plan_data = _read_plan_yaml(plan_dir)
+    renames = plan_data.get("renames", [])
+    if renames:
+        baseline = resolve_renames(baseline, renames)
+
+    current_fingerprints = current_snapshot.get("fingerprints", {})
+    rename_targets_by_source = {
+        rename.get("from", ""): rename.get("to", "")
+        for rename in renames
+        if rename.get("from") and rename.get("to")
+    }
+    ignored_sources = {
+        source
+        for source, target in rename_targets_by_source.items()
+        if current_fingerprints.get(source) == "MISSING" and target in current_fingerprints
+    }
+
     changed: list[str] = []
     for path in current_snapshot.get("changed_files", []):
-        current_fingerprint = current_snapshot.get("fingerprints", {}).get(path)
+        if path in ignored_sources:
+            continue
+        current_fingerprint = current_fingerprints.get(path)
         if current_fingerprint != baseline.get(path):
             changed.append(path)
     return sorted(set(changed))
@@ -229,11 +435,17 @@ def _files_changed_since_activation(plan_dir: Path, current_snapshot: dict) -> l
 
 def _scope_mismatches(plan_dir: Path, scope_paths: list[str], file_paths: list[str]) -> list[str]:
     ignored = _plan_bookkeeping_files(plan_dir)
+    renames = _read_plan_yaml(plan_dir).get("renames", [])
     out_of_scope: list[str] = []
     for path in file_paths:
         if path in ignored:
             continue
         if any(path_matches(path, scope_path) for scope_path in scope_paths):
+            continue
+        if any(
+            path == rename.get("to") and any(path_matches(rename.get("from", ""), scope_path) for scope_path in scope_paths)
+            for rename in renames
+        ):
             continue
         out_of_scope.append(path)
     return sorted(set(out_of_scope))
@@ -245,7 +457,9 @@ def _verification_matches_current_state(plan_dir: Path) -> bool:
     if not isinstance(verification, dict) or not verification.get("passed"):
         return False
 
-    current = _capture_git_state()
+    plan_data = _read_plan_yaml(plan_dir)
+    scope_included = plan_data.get("scope", {}).get("included", [])
+    current = _capture_git_state(scope_paths=scope_included or None)
     expected_head = verification.get("git_head", "")
     if expected_head and expected_head != current.get("git_head", ""):
         return False
@@ -281,7 +495,8 @@ def _set_plan_status(plan_dir: Path, new_status: str) -> None:
     _write_plan_yaml(plan_dir, data)
 
     # Also update the registry.
-    registry_path = _docs_dir() / "planning" / "active_plans.yaml"
+    repo_root = find_project_root_for_plan(plan_dir)
+    registry_path = get_registry_path(repo_root)
     if registry_path.exists():
         reg = yaml.safe_load(registry_path.read_text(encoding="utf-8")) or {}
         plans = reg.get("active_plans", [])
@@ -300,6 +515,8 @@ def _set_plan_status(plan_dir: Path, new_status: str) -> None:
         if new_status == "active":
             status_data["status"]["phase"] = "implementation"
             status_data["status"]["progress_percent"] = max(status_data["status"].get("progress_percent", 0), 25)
+        elif new_status == "suspended":
+            status_data["status"]["phase"] = "suspended"
         elif new_status == "completed":
             status_data["status"]["phase"] = "completed"
             status_data["status"]["progress_percent"] = 100
@@ -331,10 +548,11 @@ def _resolve_plan(name: str) -> Path | None:
 def init(
     root: str = typer.Argument(".", help="Project root directory."),
     no_wizard: bool = typer.Option(False, "--no-wizard", help="Skip interactive questions."),
+    refresh_agents: bool = typer.Option(False, "--refresh-agents", help="Refresh the managed framework section in AGENTS.md."),
 ):
     """Set up PlanGuard in a project.
 
-    Detects the project's stack and structure, then creates docs/,
+    Detects the project's stack and structure, then creates the plans root,
     .planguard/ context, and AGENTS.md tailored for the project.
     """
     base = Path(root).resolve()
@@ -364,21 +582,10 @@ def init(
                 print(f"[dim]Noted: {notes}[/dim]")
 
     # ---- Create structure ----
-    dirs_to_create = [
-        base / "docs",
-        base / "docs" / "planning",
-    ]
-    created: list[Path] = []
-    for d in dirs_to_create:
-        if not d.exists():
-            d.mkdir(parents=True, exist_ok=True)
-            created.append(d)
-
-    # Seed active_plans.yaml.
-    registry = base / "docs" / "planning" / "active_plans.yaml"
-    if not registry.exists():
-        registry.write_text("active_plans: []\n", encoding="utf-8")
-        created.append(registry)
+    plans_root = get_plans_root(base)
+    created = _ensure_plan_storage(base, plans_root)
+    created.extend(_ensure_runtime_state(base))
+    created.extend(_ensure_local_storage_ignored(base, plans_root))
 
     # ---- .planguard/ project context ----
     if has_context(base):
@@ -403,7 +610,12 @@ def init(
     if agents_path.exists():
         existing = agents_path.read_text(encoding="utf-8")
         if _FRAMEWORK_MARKER in existing:
-            print("[dim]AGENTS.md already contains the framework workflow. Skipping.[/dim]")
+            if refresh_agents:
+                agents_path.write_text(_replace_framework_section(existing, workflow_section), encoding="utf-8")
+                print("[green]Refreshed framework workflow in AGENTS.md[/green]")
+            else:
+                print("[dim]AGENTS.md already contains the framework workflow. Skipping.[/dim]")
+                print("[dim]Upgrade tip: rerun with --refresh-agents to refresh the managed section.[/dim]")
         else:
             print("[yellow]AGENTS.md already exists with your own content.[/yellow]")
             print("[dim]The framework workflow section will be appended to the end.[/dim]")
@@ -434,10 +646,114 @@ def init(
         print("[yellow]Everything already in place.[/yellow]")
 
     print()
+    print(f"[dim]Plans default to local storage under {get_default_plans_root()} and are ignored via .gitignore[/dim]")
+    print("[dim]Upgrade tip: existing repos can refresh agent instructions with planguard upgrade --no-wizard[/dim]")
+    print()
     print(Panel(
         "[bold]Next step:[/bold] Create a plan with [cyan]planguard plan[/cyan]",
         style="green",
     ))
+
+
+# ---------------------------------------------------------------------------
+# upgrade
+# ---------------------------------------------------------------------------
+
+@app.command()
+def upgrade(
+    root: str = typer.Argument(".", help="Project root directory."),
+    plans_root: str = typer.Option(None, "--plans-root", help="Optional new plans root to migrate plan storage into."),
+    refresh_agents: bool = typer.Option(True, "--refresh-agents/--no-refresh-agents", help="Refresh the managed framework section in AGENTS.md."),
+    no_wizard: bool = typer.Option(False, "--no-wizard", help="Skip interactive questions."),
+):
+    """Upgrade an existing PlanGuard repository to newer workflow defaults."""
+    base = Path(root).resolve()
+    print(Panel("[bold]PlanGuard Upgrade[/bold]", style="cyan"))
+
+    info = detect_project(base)
+    workflow_section = _build_workflow_section(info)
+    current_plans_root = get_plans_root(base)
+    selected_plans_root = plans_root
+
+    if plans_root is None and has_legacy_docs_plans(base):
+        selected_plans_root = str(get_default_plans_root())
+
+    if not no_wizard and plans_root is None and has_legacy_docs_plans(base):
+        change_storage = typer.confirm(
+            f"Current plans root is '{current_plans_root}'. Do you want to migrate plans to the local default '{get_default_plans_root()}'?",
+            default=True,
+        )
+        if change_storage:
+            selected_plans_root = typer.prompt(
+                "New plans root",
+                default=str(get_default_plans_root()),
+            )
+        else:
+            selected_plans_root = None
+
+    ignore_root = Path(selected_plans_root) if selected_plans_root else current_plans_root
+
+    created = _ensure_plan_storage(base, current_plans_root)
+    created.extend(_ensure_runtime_state(base))
+    created.extend(_ensure_local_storage_ignored(base, ignore_root))
+    migrated: list[str] = []
+
+    if refresh_agents:
+        agents_path = base / "AGENTS.md"
+        if agents_path.exists():
+            existing = agents_path.read_text(encoding="utf-8")
+            if _FRAMEWORK_MARKER in existing:
+                agents_path.write_text(_replace_framework_section(existing, workflow_section), encoding="utf-8")
+                print("[green]Refreshed framework workflow in AGENTS.md[/green]")
+            else:
+                agents_path.write_text(existing.rstrip() + "\n\n" + workflow_section, encoding="utf-8")
+                print("[green]Appended framework workflow to AGENTS.md[/green]")
+        else:
+            agents_path.write_text("# AGENTS.md\n\n" + workflow_section, encoding="utf-8")
+            created.append(agents_path)
+            print("[green]Created AGENTS.md[/green]")
+
+    if selected_plans_root:
+        target_root = Path(selected_plans_root)
+        if target_root != current_plans_root:
+            _ensure_plan_storage(base, target_root)
+            source_root = base / current_plans_root
+            target_base = base / target_root
+
+            for plan_dir in discover_plan_dirs(source_root):
+                target_plan_dir = target_base / plan_dir.name
+                if target_plan_dir.exists():
+                    print(f"[red]Cannot migrate {plan_dir.name}: target already exists at {target_plan_dir}[/red]")
+                    raise typer.Exit(code=1)
+                plan_dir.rename(target_plan_dir)
+                migrated.append(f"{plan_dir.relative_to(base)} -> {target_plan_dir.relative_to(base)}")
+
+            if target_root == get_default_plans_root():
+                _clear_default_plans_root_config(base)
+                print(f"[green]Using default local plans_root: {target_root}[/green]")
+            else:
+                _write_config(base, plans_root=str(target_root))
+                print(f"[green]Configured plans_root: {target_root}[/green]")
+            current_plans_root = target_root
+        elif (base / ".planguard" / "config.yaml").exists():
+            print(f"[dim]plans_root already set to {current_plans_root}[/dim]")
+
+    migrated.extend(_migrate_legacy_runtime_state(base, discover_plan_dirs(base / current_plans_root)))
+
+    if created:
+        print()
+        print("[green]Created:[/green]")
+        for path in created:
+            print(f"  {path.relative_to(base)}")
+
+    if migrated:
+        print()
+        print("[green]Migrated plans:[/green]")
+        for item in migrated:
+            print(f"  {item}")
+
+    print()
+    print("[bold]Next step:[/bold] Run [cyan]planguard check[/cyan] to confirm the upgraded repo state.")
 
 
 # ---------------------------------------------------------------------------
@@ -451,10 +767,13 @@ def plan(
     scope: str = typer.Option(None, "--scope", "-s", help="Comma-separated paths in scope."),
     priority: str = typer.Option(None, "--priority", "-p", help="low, medium, high, or critical."),
     owner: str = typer.Option(None, "--owner", help="Who owns this plan."),
+    template: str = typer.Option("default", "--template", "-t", help="Plan template: default, docs-only, refactor, schema-change, service-integration."),
     no_wizard: bool = typer.Option(False, "--no-wizard", help="Skip interactive questions."),
 ):
     """Create a new plan. Launches an interactive wizard when run without flags."""
     print(Panel("[bold]New Plan[/bold]", style="cyan"))
+    if template != "default":
+        print(f"[dim]Using template: {template}[/dim]")
     risks: list[dict] = []
     done_when_list: list[str] = []
     verify_list: list[str] = []
@@ -560,18 +879,23 @@ def plan(
     verify = verify_list or None
     rollback = rollback_input
 
-    plan_dir = generate_plan(
-        name=name,
-        objective=objective,
-        scope_included=scope_list,
-        priority=priority,
-        owner=owner,
-        risks=risk_list,
-        done_when=done_list,
-        verify_commands=verify,
-        rollback_strategy=rollback,
-        docs_dir=_docs_dir(),
-    )
+    try:
+        plan_dir = generate_plan(
+            name=name,
+            objective=objective,
+            scope_included=scope_list,
+            priority=priority,
+            owner=owner,
+            risks=risk_list,
+            done_when=done_list,
+            verify_commands=verify,
+            rollback_strategy=rollback,
+            template=template,
+            docs_dir=_docs_dir(),
+        )
+    except KeyError as exc:
+        print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1)
 
     log_event("plan_created", plan=plan_dir.name, details={
         "objective": objective,
@@ -692,6 +1016,19 @@ def _check_single(plan_dir: Path) -> bool:
     elif status == "active" and current_snapshot.get("is_git_repo"):
         print("[dim]  - No post-activation changes detected[/dim]")
 
+    # 2c. Rename hints — suggest adding a renames section for detected git renames.
+    if status == "active":
+        git_renames = detect_git_renames()
+        plan_renames = data.get("renames", [])
+        declared_froms = {r.get("from", "") for r in plan_renames}
+        suggestions = [r for r in git_renames if r["from"] not in declared_froms]
+        if suggestions:
+            print("[yellow]  [HINT] Detected renames — consider adding to plan.yaml:[/yellow]")
+            print("[dim]  renames:[/dim]")
+            for s in suggestions:
+                print(f"[dim]    - from: {s['from']}[/dim]")
+                print(f"[dim]      to: {s['to']}[/dim]")
+
     # 3. Dependency graph.
     graph = build_plan_graph(plan_dir)
     if graph is not None:
@@ -777,20 +1114,19 @@ def status():
         data = _read_plan_yaml(pd)
         meta = data.get("plan", {})
 
-        # Read status.yaml for phase info.
-        status_path = pd / "status.yaml"
+        # Read runtime status for phase info.
         phase = "—"
-        if status_path.exists():
-            try:
-                sdata = yaml.safe_load(status_path.read_text(encoding="utf-8")) or {}
-                phase = sdata.get("status", {}).get("phase", "—")
-            except Exception:
-                pass
+        try:
+            sdata = _read_status_yaml(pd)
+            phase = sdata.get("status", {}).get("phase", "—")
+        except Exception:
+            pass
 
         plan_status = meta.get("status", "unknown")
         status_style = {
             "draft": "yellow",
             "active": "green",
+            "suspended": "yellow",
             "completed": "dim",
             "archived": "dim",
         }.get(plan_status, "white")
@@ -823,6 +1159,10 @@ def activate(name: str = typer.Argument(..., help="Plan name to activate.")):
         print(f"[yellow]{name} is already active.[/yellow]")
         raise typer.Exit(code=0)
 
+    if current == "suspended":
+        print(f"[yellow]{name} is suspended. Use 'planguard resume {name}' instead.[/yellow]")
+        raise typer.Exit(code=1)
+
     if current in ("completed", "archived"):
         print(f"[red]Cannot activate a {current} plan. Create a new plan instead.[/red]")
         raise typer.Exit(code=1)
@@ -847,8 +1187,13 @@ def activate(name: str = typer.Argument(..., help="Plan name to activate.")):
         raise typer.Exit(code=1)
 
     _set_plan_status(plan_dir, "active")
+    data = _read_plan_yaml(plan_dir)
+    scope_included = data.get("scope", {}).get("included", [])
     status_data = _read_status_yaml(plan_dir)
-    baseline = _capture_git_state()
+    baseline = _capture_git_state(scope_paths=scope_included or None)
+    rename_sources = [rename.get("from", "") for rename in data.get("renames", []) if rename.get("from")]
+    if rename_sources:
+        baseline["fingerprints"].update(build_fingerprints(rename_sources))
     status_data["activation"] = {
         "activated_at": baseline["captured_at"],
         "git_branch": baseline["git_branch"],
@@ -894,6 +1239,19 @@ def complete(name: str = typer.Argument(..., help="Plan name to mark as complete
     if "Complete plan (planguard complete)" not in status_data["completed_steps"]:
         status_data["completed_steps"].append("Complete plan (planguard complete)")
     status_data["remaining_steps"] = []
+
+    # Auto-fill handoff skeleton.
+    verification = status_data.get("verification", {})
+    handoff = status_data.get("handoff", {})
+    if not handoff.get("summary"):
+        handoff["summary"] = f"Plan {name} completed on {_now_iso()[:10]}"
+    handoff["completed_at"] = _now_iso()
+    handoff["verification_passed"] = verification.get("passed", False)
+    handoff["scope_files_changed"] = len(verification.get("changed_files", []))
+    if not handoff.get("notes"):
+        handoff["notes"] = []
+    status_data["handoff"] = handoff
+
     _write_status_yaml(plan_dir, status_data)
     log_event("plan_completed", plan=name)
     print(f"[green]{name} marked as completed.[/green]")
@@ -914,6 +1272,86 @@ def archive(name: str = typer.Argument(..., help="Plan name to archive.")):
     _set_plan_status(plan_dir, "archived")
     log_event("plan_archived", plan=name)
     print(f"[dim]{name} archived.[/dim]")
+
+
+# ---------------------------------------------------------------------------
+# suspend
+# ---------------------------------------------------------------------------
+
+@app.command()
+def suspend(
+    name: str = typer.Argument(..., help="Plan name to suspend."),
+    reason: str = typer.Option("", "--reason", "-r", help="Why this plan is being suspended."),
+):
+    """Suspend an active plan so overlapping work can proceed."""
+    plan_dir = _resolve_plan(name)
+    if not plan_dir:
+        print(f"[red]Plan not found: {name}[/red]")
+        raise typer.Exit(code=1)
+
+    current = _read_plan_yaml(plan_dir).get("plan", {}).get("status")
+    if current != "active":
+        print(f"[red]Only active plans can be suspended (current: {current}).[/red]")
+        raise typer.Exit(code=1)
+
+    _set_plan_status(plan_dir, "suspended")
+    status_data = _read_status_yaml(plan_dir)
+    status_data.setdefault("suspension", {})
+    status_data["suspension"]["suspended_at"] = _now_iso()
+    status_data["suspension"]["reason"] = reason
+    _write_status_yaml(plan_dir, status_data)
+    log_event("plan_suspended", plan=name, details={"reason": reason})
+    print(f"[yellow]{name} suspended.[/yellow]")
+    if reason:
+        print(f"[dim]Reason: {reason}[/dim]")
+    print("[dim]Resume with: planguard resume " + name + "[/dim]")
+
+
+# ---------------------------------------------------------------------------
+# resume
+# ---------------------------------------------------------------------------
+
+@app.command()
+def resume(
+    name: str = typer.Argument(..., help="Plan name to resume."),
+    refresh_baseline: bool = typer.Option(False, "--refresh-baseline", help="Re-capture baseline snapshot."),
+):
+    """Resume a suspended plan."""
+    plan_dir = _resolve_plan(name)
+    if not plan_dir:
+        print(f"[red]Plan not found: {name}[/red]")
+        raise typer.Exit(code=1)
+
+    current = _read_plan_yaml(plan_dir).get("plan", {}).get("status")
+    if current != "suspended":
+        print(f"[red]Only suspended plans can be resumed (current: {current}).[/red]")
+        raise typer.Exit(code=1)
+
+    _set_plan_status(plan_dir, "active")
+    status_data = _read_status_yaml(plan_dir)
+    status_data.setdefault("suspension", {})
+    status_data["suspension"]["resumed_at"] = _now_iso()
+
+    if refresh_baseline:
+        plan_data = _read_plan_yaml(plan_dir)
+        scope_included = plan_data.get("scope", {}).get("included", [])
+        baseline = _capture_git_state(scope_paths=scope_included or None)
+        rename_sources = [rename.get("from", "") for rename in plan_data.get("renames", []) if rename.get("from")]
+        if rename_sources:
+            baseline["fingerprints"].update(build_fingerprints(rename_sources))
+        status_data["activation"] = {
+            "activated_at": baseline["captured_at"],
+            "git_branch": baseline["git_branch"],
+            "git_head": baseline["git_head"],
+            "baseline_changed_files": baseline["changed_files"],
+            "baseline_fingerprints": baseline["fingerprints"],
+        }
+        print(f"[green]{name} resumed with refreshed baseline.[/green]")
+    else:
+        print(f"[green]{name} resumed.[/green]")
+
+    _write_status_yaml(plan_dir, status_data)
+    log_event("plan_resumed", plan=name, details={"refresh_baseline": refresh_baseline})
 
 
 # ---------------------------------------------------------------------------
@@ -951,8 +1389,12 @@ def verify(name: str = typer.Argument(..., help="Plan name to verify.")):
 
     This confirms that the implementation actually works. Verification must
     pass before marking a plan complete.
+
+    Supports both plain shell commands (strings) and structured checks (dicts):
+      - check: file_exists / file_not_exists / file_moved / text_contains / text_not_contains
+      - command: shell command with optional interpreter
     """
-    import subprocess
+    from planguard.verification.primitives import run_check, format_label
 
     plan_dir = _resolve_plan(name)
     if not plan_dir:
@@ -984,34 +1426,28 @@ def verify(name: str = typer.Argument(..., help="Plan name to verify.")):
 
     all_passed = True
     results: list[dict] = []
-    for cmd in commands:
-        print(f"[bold]Running:[/bold] {cmd}")
-        result = subprocess.run(
-            cmd,
-            shell=True,
-            capture_output=True,
-            text=True,
-        )
-        passed = result.returncode == 0
-        results.append({"command": cmd, "passed": passed, "returncode": result.returncode})
+    for entry in commands:
+        label = format_label(entry)
+        print(f"[bold]Running:[/bold] {label}")
+        result = run_check(entry)
+        results.append({
+            "command": label,
+            "passed": result.passed,
+            "duration_seconds": result.duration_seconds,
+        })
 
-        if passed:
-            print(f"{_PASS} {cmd}")
+        if result.passed:
+            print(f"{_PASS} {label}")
         else:
-            print(f"{_FAIL} {cmd} (exit code {result.returncode})")
-            if result.stdout.strip():
-                # Show last few lines of output.
-                lines = result.stdout.strip().splitlines()
-                for line in lines[-5:]:
-                    print(f"    {line}")
-            if result.stderr.strip():
-                lines = result.stderr.strip().splitlines()
-                for line in lines[-5:]:
+            print(f"{_FAIL} {label}")
+            if result.detail:
+                for line in result.detail.splitlines()[-5:]:
                     print(f"    {line}")
             all_passed = False
 
+    scope_included = data.get("scope", {}).get("included", [])
     status_data = _read_status_yaml(plan_dir)
-    verification_snapshot = _capture_git_state()
+    verification_snapshot = _capture_git_state(scope_paths=scope_included or None)
     status_data["verification"] = {
         "passed": all_passed,
         "last_run": _now_iso(),
@@ -1019,12 +1455,20 @@ def verify(name: str = typer.Argument(..., help="Plan name to verify.")):
         "git_head": verification_snapshot["git_head"],
         "changed_files": verification_snapshot["changed_files"],
         "fingerprints": verification_snapshot["fingerprints"],
-        "commands": commands,
+        "commands": [format_label(e) for e in commands],
+        "results": results,
     }
     if all_passed:
         status_data.setdefault("completed_steps", [])
+        status_data.setdefault("remaining_steps", [])
         if "Verify (planguard verify)" not in status_data["completed_steps"]:
             status_data["completed_steps"].append("Verify (planguard verify)")
+        # Auto-migrate matching remaining_steps.
+        for step in list(status_data["remaining_steps"]):
+            if "verify" in step.lower():
+                status_data["remaining_steps"].remove(step)
+                if step not in status_data["completed_steps"]:
+                    status_data["completed_steps"].append(step)
         status_data["status"]["phase"] = "validation"
         status_data["status"]["progress_percent"] = max(status_data["status"].get("progress_percent", 0), 75)
     _write_status_yaml(plan_dir, status_data)
@@ -1136,7 +1580,7 @@ def guard(
 # ---------------------------------------------------------------------------
 
 @app.command()
-def validate(docs_dir: str = typer.Argument("docs", help="Docs directory to validate.")):
+def validate(docs_dir: str | None = typer.Argument(None, help="Plans directory to validate.")):
     """Validate all plan structures. (Prefer 'planguard check' for full checks.)"""
     ok, messages = validate_docs(docs_dir)
     for message in messages:

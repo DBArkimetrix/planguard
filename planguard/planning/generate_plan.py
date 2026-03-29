@@ -8,7 +8,14 @@ import re
 
 import yaml
 
+from planguard.config import (
+    find_project_root_for_plan,
+    get_plans_root,
+    get_registry_path,
+    get_status_path,
+)
 from planguard.planning.build_work_breakdown import build_backlog, build_sprints
+from planguard.planning.templates import get_template
 
 
 def slugify(text: str) -> str:
@@ -33,16 +40,20 @@ def generate_plan(
     done_when: list[str] | None = None,
     verify_commands: list[str] | None = None,
     rollback_strategy: str = "",
-    docs_dir: Path | str = "docs",
+    template: str = "default",
+    docs_dir: Path | str | None = None,
 ) -> Path:
-    """Create a plan.yaml and status.yaml from the provided details.
+    """Create a plan.yaml plus runtime status from the provided details.
 
     Returns the path to the created plan directory.
     """
+    if docs_dir is None:
+        docs_dir = get_plans_root()
     plan_name = slugify(name)
     today = str(date.today())
     plan_dir = Path(docs_dir) / plan_name
     plan_dir.mkdir(parents=True, exist_ok=True)
+    project_root = find_project_root_for_plan(plan_dir)
 
     included = scope_included or ["src", "tests"]
     excluded = scope_excluded or ["unrelated modules"]
@@ -51,12 +62,28 @@ def generate_plan(
         "No regressions in existing functionality",
     ]
     plan_verify_commands = verify_commands or []
+
+    # Apply template defaults.
+    tmpl = get_template(template)
+    tmpl_phases = tmpl["phases"]
+    tmpl_risks = tmpl["risks"]
+    tmpl_test_strategy = tmpl.get("test_strategy", [
+        {"area": "Existing functionality in scope paths", "validation": "Confirm no unintended behaviour changes"},
+    ])
+    tmpl_rollback = tmpl.get("rollback_strategy", "git revert to prior commit")
+
     backlog = build_backlog(
         included,
         done_when=plan_done_when,
         verify_commands=plan_verify_commands,
     )
     sprints = build_sprints(backlog)
+
+    # Build phase dependency chain from template phases.
+    phase_names = [p["name"] for p in tmpl_phases]
+    dependencies = []
+    for i, pname in enumerate(phase_names):
+        dependencies.append({"id": pname, "depends_on": [phase_names[i - 1]] if i > 0 else []})
 
     plan_data = {
         "plan": {
@@ -71,51 +98,15 @@ def generate_plan(
             "included": included,
             "excluded": excluded,
         },
-        "phases": [
-            {
-                "name": "analysis",
-                "tasks": [
-                    "Analyze current implementation",
-                    "Identify dependencies and risks",
-                ],
-            },
-            {
-                "name": "implementation",
-                "tasks": [
-                    "Implement changes in safe, testable slices",
-                ],
-            },
-            {
-                "name": "validation",
-                "tasks": [
-                    "Run tests and review for regressions",
-                ],
-            },
-        ],
-        "risks": risks or [
-            {
-                "id": "RISK-001",
-                "description": "Regression impact on existing behaviour",
-                "severity": "medium",
-                "mitigation": "Add targeted regression tests before changing code",
-            },
-        ],
-        "dependencies": [
-            {"id": "analysis", "depends_on": []},
-            {"id": "implementation", "depends_on": ["analysis"]},
-            {"id": "validation", "depends_on": ["implementation"]},
-        ],
+        "phases": tmpl_phases,
+        "risks": risks or tmpl_risks,
+        "dependencies": dependencies,
         "backlog": backlog,
         "sprints": sprints,
         "done_when": plan_done_when,
         "verify_commands": plan_verify_commands,
-        "rollback_strategy": rollback_strategy or "git revert to prior commit",
-        "test_strategy": [
-            {
-                "area": "Existing functionality in scope paths",
-                "validation": "Confirm no unintended behaviour changes",
-            },
-        ],
+        "rollback_strategy": rollback_strategy or tmpl_rollback,
+        "test_strategy": tmpl_test_strategy,
     }
 
     status_data = {
@@ -156,17 +147,19 @@ def generate_plan(
     }
 
     write_yaml(plan_dir / "plan.yaml", plan_data)
-    write_yaml(plan_dir / "status.yaml", status_data)
+    status_path = get_status_path(plan_name, project_root)
+    status_path.parent.mkdir(parents=True, exist_ok=True)
+    write_yaml(status_path, status_data)
 
-    # Register in active_plans.yaml
-    _register_plan(plan_name, docs_dir)
+    # Register in runtime state.
+    _register_plan(plan_name, root=project_root)
 
     return plan_dir
 
 
-def _register_plan(plan_name: str, docs_dir: Path | str = "docs") -> None:
+def _register_plan(plan_name: str, root: Path | str = ".") -> None:
     """Add a plan to the active plans registry if not already present."""
-    registry_path = Path(docs_dir) / "planning" / "active_plans.yaml"
+    registry_path = get_registry_path(root)
     registry_path.parent.mkdir(parents=True, exist_ok=True)
 
     if registry_path.exists():

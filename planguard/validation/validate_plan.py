@@ -3,8 +3,9 @@
 Each plan directory must contain:
   - plan.yaml with required sections: plan, objective, scope, phases, backlog,
     sprints, risks, dependencies
-  - status.yaml with required sections: status, activation, verification,
-    remaining_steps, completed_steps, handoff
+Runtime state must contain:
+  - .planguard/state/plans/<plan_name>/status.yaml with required sections:
+    status, activation, verification, remaining_steps, completed_steps, handoff
 """
 
 from __future__ import annotations
@@ -14,8 +15,10 @@ import sys
 
 import yaml
 
+from planguard.config import find_project_root_for_plan, get_plans_root, get_status_path
 
-REQUIRED_FILES = ["plan.yaml", "status.yaml"]
+
+REQUIRED_FILES = ["plan.yaml"]
 
 REQUIRED_PLAN_SECTIONS = [
     "plan",
@@ -30,7 +33,7 @@ REQUIRED_PLAN_SECTIONS = [
 
 REQUIRED_PLAN_FIELDS = ["name", "status", "created", "priority"]
 
-VALID_STATUSES = {"draft", "active", "completed", "archived"}
+VALID_STATUSES = {"draft", "active", "suspended", "completed", "archived"}
 
 REQUIRED_STATUS_SECTIONS = [
     "status",
@@ -140,7 +143,28 @@ def validate_plan(plan_dir: Path) -> tuple[bool, list[str]]:
                     messages.append(f"Sprint {index} missing field: {field_name}")
                     errors = True
 
-    status_path = plan_dir / "status.yaml"
+    # Validate optional renames section.
+    renames = data.get("renames", [])
+    if renames and isinstance(renames, list):
+        for index, rename in enumerate(renames, start=1):
+            if not isinstance(rename, dict):
+                messages.append(f"Rename entry {index} must be a mapping")
+                errors = True
+                continue
+            if "from" not in rename:
+                messages.append(f"Rename entry {index} missing 'from'")
+                errors = True
+            if "to" not in rename:
+                messages.append(f"Rename entry {index} missing 'to'")
+                errors = True
+
+    root = find_project_root_for_plan(plan_dir)
+    status_path = get_status_path(plan_dir.name, root)
+    if not status_path.exists():
+        legacy_status_path = plan_dir / "status.yaml"
+        if legacy_status_path.exists():
+            status_path = legacy_status_path
+
     if status_path.exists():
         try:
             status_data = yaml.safe_load(status_path.read_text(encoding="utf-8")) or {}
@@ -177,6 +201,9 @@ def validate_plan(plan_dir: Path) -> tuple[bool, list[str]]:
                 if field_name not in verification:
                     messages.append(f"status.yaml verification missing field: {field_name}")
                     errors = True
+    else:
+        messages.append("Missing required runtime state file: .planguard/state/plans/<plan_name>/status.yaml")
+        errors = True
 
     if not errors:
         messages.append("Valid")
@@ -184,18 +211,20 @@ def validate_plan(plan_dir: Path) -> tuple[bool, list[str]]:
     return not errors, messages
 
 
-def validate_docs(docs_dir: Path | str = "docs") -> tuple[bool, list[str]]:
-    """Validate all plans under a docs directory."""
+def validate_docs(docs_dir: Path | str | None = None) -> tuple[bool, list[str]]:
+    """Validate all plans under the configured plans directory."""
+    if docs_dir is None:
+        docs_dir = get_plans_root()
     docs_path = Path(docs_dir)
     messages: list[str] = []
 
     if not docs_path.exists():
-        messages.append("No docs directory found. Run 'agent init' to set up.")
+        messages.append("No plans directory found. Run 'planguard init' to set up.")
         return True, messages
 
     plan_dirs = discover_plan_dirs(docs_path)
     if not plan_dirs:
-        messages.append("No plans found. Run 'agent plan' to create one.")
+        messages.append("No plans found. Run 'planguard plan' to create one.")
         return True, messages
 
     all_ok = True
@@ -226,7 +255,7 @@ def get_plan_status(plan_dir: Path) -> str | None:
 
 def main(argv: list[str] | None = None) -> int:
     args = argv if argv is not None else sys.argv[1:]
-    docs_dir = Path(args[0]) if args else Path("docs")
+    docs_dir = Path(args[0]) if args else get_plans_root()
     ok, messages = validate_docs(docs_dir)
     for message in messages:
         print(message)

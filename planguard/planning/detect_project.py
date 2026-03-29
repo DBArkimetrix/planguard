@@ -7,6 +7,8 @@ from pathlib import Path
 
 import yaml
 
+from planguard.config import get_plans_root
+
 
 # Map of marker files/dirs to (language, framework) tuples.
 _MARKERS: list[tuple[str, str, str | None]] = [
@@ -134,11 +136,15 @@ def detect_project(root: Path | str = ".") -> ProjectInfo:
     """Scan a directory and return detected project information."""
     root = Path(root).resolve()
     info = ProjectInfo(root=root)
+    plans_root = get_plans_root(root)
+    ignored_top_level = {"AGENTS.md", "CLAUDE.md"}
+    if plans_root.parts:
+        ignored_top_level.add(plans_root.parts[0])
 
     # Check if effectively empty (no meaningful files beyond dotfiles).
     meaningful = [
         p for p in root.iterdir()
-        if not p.name.startswith(".") and p.name not in {"docs", "AGENTS.md", "CLAUDE.md"}
+        if not p.name.startswith(".") and p.name not in ignored_top_level
     ]
     info.is_empty = len(meaningful) == 0
 
@@ -158,7 +164,7 @@ def detect_project(root: Path | str = ".") -> ProjectInfo:
     info.has_claude_md = (root / "CLAUDE.md").exists()
 
     # Existing plans
-    docs_dir = root / "docs"
+    docs_dir = root / plans_root
     if docs_dir.is_dir():
         plan_dirs = [
             p.name for p in docs_dir.iterdir()

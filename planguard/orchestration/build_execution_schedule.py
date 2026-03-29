@@ -9,16 +9,20 @@ from pathlib import Path
 
 import yaml
 
+from planguard.config import get_execution_schedule_path, get_plans_root
+
 
 _PRIORITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
 _ACTIVE_STATUSES = {"draft", "active"}
 
 
-def build_execution_schedule(docs_dir: Path | str = "docs") -> dict:
+def build_execution_schedule(docs_dir: Path | str | None = None) -> dict:
     """Read all plan.yaml files and return a prioritised execution schedule.
 
     Only plans with status draft or active are included.
     """
+    if docs_dir is None:
+        docs_dir = get_plans_root()
     docs_path = Path(docs_dir)
     if not docs_path.is_dir():
         return {}
@@ -71,7 +75,7 @@ def main() -> int:
         print(f"  {phase}: {', '.join(names)}")
 
     # Write to file.
-    out_path = Path("docs/planning/execution_schedule.yaml")
+    out_path = get_execution_schedule_path()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(
         yaml.safe_dump({"execution_schedule": schedule}, sort_keys=False),

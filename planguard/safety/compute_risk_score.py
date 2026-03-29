@@ -10,6 +10,8 @@ from pathlib import Path
 
 import yaml
 
+from planguard.config import get_plans_root
+
 
 _SEVERITY_WEIGHTS = {
     "low": 1,
@@ -62,9 +64,9 @@ def compute_risk_score(
 def main() -> int:
     import sys
 
-    plan_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("docs")
-    # If pointed at docs/, check all plans.
-    if plan_dir.name == "docs":
+    plan_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else get_plans_root()
+    # If pointed at the plans root, check all plans.
+    if plan_dir == get_plans_root() or plan_dir.name == get_plans_root().name:
         for entry in sorted(plan_dir.iterdir()):
             if entry.is_dir() and (entry / "plan.yaml").exists():
                 total, status, _ = compute_risk_score(entry)

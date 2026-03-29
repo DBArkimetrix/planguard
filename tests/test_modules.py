@@ -2,18 +2,25 @@
 
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import os
 import unittest
 
 import yaml
 
+from planguard.config import get_default_plans_root, get_execution_schedule_path, get_plans_root, get_registry_path, get_status_path
 from planguard.planning.detect_project import detect_project
 from planguard.planning.generate_plan import generate_plan
+from planguard.orchestration.build_execution_schedule import build_execution_schedule
 from planguard.validation.validate_plan import validate_plan, validate_docs
 from planguard.orchestration.detect_collisions import detect_collisions
 from planguard.safety.compute_risk_score import compute_risk_score
 
 
 class DetectProjectTests(unittest.TestCase):
+    def test_default_plans_root_is_local_for_fresh_repo(self) -> None:
+        with TemporaryDirectory() as tmp:
+            self.assertEqual(get_plans_root(tmp), get_default_plans_root())
+
     def test_detects_empty_directory(self) -> None:
         with TemporaryDirectory() as tmp:
             info = detect_project(tmp)
@@ -53,6 +60,18 @@ class DetectProjectTests(unittest.TestCase):
             plan_dir = Path(tmp) / "docs" / "my_plan"
             plan_dir.mkdir(parents=True)
             (plan_dir / "plan.yaml").write_text("plan:\n  name: my_plan\n")
+            self.assertEqual(get_plans_root(tmp), Path("docs"))
+            info = detect_project(tmp)
+            self.assertTrue(info.has_existing_plans)
+            self.assertIn("my_plan", info.existing_plan_names)
+
+    def test_detects_existing_plans_in_configured_root(self) -> None:
+        with TemporaryDirectory() as tmp:
+            (Path(tmp) / ".planguard").mkdir()
+            (Path(tmp) / ".planguard" / "config.yaml").write_text("plans_root: plans\n", encoding="utf-8")
+            plan_dir = Path(tmp) / "plans" / "my_plan"
+            plan_dir.mkdir(parents=True)
+            (plan_dir / "plan.yaml").write_text("plan:\n  name: my_plan\n")
             info = detect_project(tmp)
             self.assertTrue(info.has_existing_plans)
             self.assertIn("my_plan", info.existing_plan_names)
@@ -68,7 +87,7 @@ class GeneratePlanTests(unittest.TestCase):
                 docs_dir=docs,
             )
             self.assertTrue((plan_dir / "plan.yaml").exists())
-            self.assertTrue((plan_dir / "status.yaml").exists())
+            self.assertTrue(get_status_path("test_plan", tmp).exists())
 
             data = yaml.safe_load((plan_dir / "plan.yaml").read_text())
             self.assertEqual(data["plan"]["status"], "draft")
@@ -118,9 +137,27 @@ class GeneratePlanTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             docs = Path(tmp) / "docs"
             generate_plan(name="registered plan", objective="test", docs_dir=docs)
-            registry = yaml.safe_load((docs / "planning" / "active_plans.yaml").read_text())
+            registry = yaml.safe_load(get_registry_path(tmp).read_text())
             names = [p["name"] for p in registry["active_plans"]]
             self.assertIn("registered_plan", names)
+
+    def test_build_execution_schedule_uses_configured_root_by_default(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".planguard").mkdir()
+            (root / ".planguard" / "config.yaml").write_text("plans_root: plans\n", encoding="utf-8")
+            plans_dir = root / "plans"
+            generate_plan(name="scheduled plan", objective="test", docs_dir=plans_dir)
+
+            previous_cwd = Path.cwd()
+            try:
+                os.chdir(root)
+                schedule = build_execution_schedule()
+            finally:
+                os.chdir(previous_cwd)
+
+            self.assertEqual(schedule, {"phase_medium": ["scheduled_plan"]})
+            self.assertTrue(get_execution_schedule_path(root).parent.exists())
 
 
 class ValidatePlanTests(unittest.TestCase):
@@ -149,7 +186,7 @@ class ValidatePlanTests(unittest.TestCase):
             )
             ok, messages = validate_plan(plan_dir)
             self.assertFalse(ok)
-            self.assertTrue(any("status.yaml" in m for m in messages))
+            self.assertTrue(any(".planguard/state/plans/<plan_name>/status.yaml" in m for m in messages))
 
     def test_invalid_status_value_fails(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -167,7 +204,9 @@ class ValidatePlanTests(unittest.TestCase):
                     "dependencies": [],
                 })
             )
-            (plan_dir / "status.yaml").write_text("status:\n  phase: planning\n")
+            status_path = get_status_path("bad_status", tmp)
+            status_path.parent.mkdir(parents=True, exist_ok=True)
+            status_path.write_text("status:\n  phase: planning\n")
             ok, messages = validate_plan(plan_dir)
             self.assertFalse(ok)
             self.assertTrue(any("Invalid plan status" in m for m in messages))
@@ -176,7 +215,7 @@ class ValidatePlanTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             docs = Path(tmp) / "docs"
             plan_dir = generate_plan(name="status check", objective="test", docs_dir=docs)
-            (plan_dir / "status.yaml").write_text("status:\n  phase: planning\n", encoding="utf-8")
+            get_status_path("status_check", tmp).write_text("status:\n  phase: planning\n", encoding="utf-8")
             ok, messages = validate_plan(plan_dir)
             self.assertFalse(ok)
             self.assertTrue(any("remaining_steps" in m for m in messages))

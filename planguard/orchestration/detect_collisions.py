@@ -10,6 +10,7 @@ from pathlib import Path
 
 import yaml
 
+from planguard.config import get_plans_root
 from planguard.pathspec import paths_overlap
 
 
@@ -35,8 +36,10 @@ def _load_plan_scope(plan_dir: Path) -> dict | None:
     }
 
 
-def detect_collisions(docs_dir: Path | str = "docs") -> list[dict]:
+def detect_collisions(docs_dir: Path | str | None = None) -> list[dict]:
     """Scan all active plans under docs_dir for overlapping scope paths."""
+    if docs_dir is None:
+        docs_dir = get_plans_root()
     docs_path = Path(docs_dir)
     if not docs_path.is_dir():
         return []
@@ -68,7 +71,7 @@ def detect_collisions(docs_dir: Path | str = "docs") -> list[dict]:
 
 
 def main() -> int:
-    collisions = detect_collisions()
+    collisions = detect_collisions(get_plans_root())
     if not collisions:
         print("No collisions between active plans.")
     else:

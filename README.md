@@ -18,7 +18,7 @@ PlanGuard fixes this with scope enforcement, safety checks, verification gates, 
 ## Quick Start
 
 ```bash
-# Install
+# Install or upgrade
 pipx install planguard          # or: pip install planguard
 
 # Set up in your project
@@ -46,6 +46,43 @@ poetry add --group dev planguard # or with Poetry
 
 Works on Linux, macOS, and Windows. Requires Python 3.9+.
 
+## Upgrade
+
+Existing `0.5+` installs should upgrade in place:
+
+```bash
+pipx upgrade planguard
+pip install -U planguard
+poetry add --group dev planguard@latest
+```
+
+For existing repositories, prefer the scripted upgrade path:
+
+```bash
+planguard upgrade --no-wizard
+planguard check
+```
+
+On legacy repositories that still keep plans under `docs/`, `planguard upgrade --no-wizard` now migrates them to the local default `.planguard/plans/`, refreshes the managed AGENTS workflow, and keeps runtime state under `.planguard/state/`.
+
+### Manual Fallback
+
+If you only need to refresh the managed AGENTS workflow without migrating plan storage, the manual fallback is:
+
+```bash
+planguard init --refresh-agents --no-wizard
+planguard check
+```
+
+### Adopt the Newer Features
+
+Existing plans remain compatible. Once upgraded, you can use the newer capabilities where they help:
+
+- use `planguard plan --template <name>` for tailored plan generation
+- use structured `verify_commands` entries for deterministic or shell-free verification
+- add `renames:` mappings to plans that intentionally move files after activation
+- use `planguard suspend <plan>` / `planguard resume <plan>` when overlapping work needs to pause safely
+
 ## Setting Up a Project
 
 ```bash
@@ -61,7 +98,8 @@ The wizard scans your repo, detects languages, frameworks, test/build commands, 
 | `.planguard/conventions.md` | Coding patterns and style constraints |
 | `.planguard/boundaries.md` | Files/directories agents must never modify |
 | `.planguard/policies.yaml` | Governance rules (database, security, custom) |
-| `docs/planning/active_plans.yaml` | Plan registry |
+| `.gitignore` | Updated to keep local plans and runtime state out of commits |
+| `.planguard/state/active_plans.yaml` | Local runtime registry of active plans |
 
 Review these files, then commit them. Any agent that reads `AGENTS.md` will follow the workflow.
 
@@ -86,7 +124,31 @@ Or skip the wizard entirely:
 planguard plan "jwt-auth" --objective "Add JWT auth" --scope "src/api, tests" --priority high --no-wizard
 ```
 
-Each plan produces `docs/<plan_name>/plan.yaml` (objective, scope, backlog, sprints, risks, verification commands) and `docs/<plan_name>/status.yaml` (progress tracking). Review the plan before activating.
+Each plan produces:
+
+- `<plans_root>/<plan_name>/plan.yaml` for the local plan definition
+- `.planguard/state/plans/<plan_name>/status.yaml` for local runtime progress state
+
+That split is intentional: keep both plan definitions and runtime churn local by default, while only the install scaffold stays commit-worthy.
+
+By default, plan definitions are stored under `.planguard/plans/` and ignored via `.gitignore`. If you need a different local path, create `.planguard/config.yaml`:
+
+```yaml
+plans_root: .planguard/plans    # or any relative path
+```
+
+### Templates
+
+Use `--template` to generate plans tailored to specific change types:
+
+```bash
+planguard plan --template docs-only "update-readme" --objective "..." --no-wizard
+planguard plan --template schema-change "add-users-table" --objective "..." --no-wizard
+```
+
+Available templates: `default`, `docs-only`, `refactor`, `schema-change`, `service-integration`. Each adjusts the generated phases, risks, and test strategy. When omitted, `default` is used — identical to the current behaviour.
+
+Review the plan before activating.
 
 ## Running Checks
 
@@ -150,6 +212,40 @@ PlanGuard is not a security scanner — use [Bandit](https://bandit.readthedocs.
 
 2. **Verification commands** — add security scanners to a plan's `verify_commands` (e.g., `bandit -r src/ -ll`) so they run during `planguard verify` and become part of the auditable lifecycle.
 
+## Verification Commands
+
+`verify_commands` in `plan.yaml` supports three formats:
+
+```yaml
+verify_commands:
+  # Plain string — runs via default shell (backward compatible)
+  - "pytest tests/ -v"
+
+  # Shell command with explicit interpreter — avoids cross-platform shell issues
+  - command: "Get-ChildItem *.ps1 | ForEach-Object { & $_.FullName }"
+    interpreter: pwsh
+    timeout: 120
+
+  # Structured assertion — no shell, declarative
+  - check: file_exists
+    path: src/config.py
+  - check: text_contains
+    path: README.md
+    pattern: "## Installation"
+  - check: file_moved
+    from: src/old_module.py
+    to: src/new_module.py
+  - check: text_not_contains
+    path: src/app.py
+    pattern: "TODO: remove"
+```
+
+Available structured checks: `file_exists`, `file_not_exists`, `file_moved`, `text_contains`, `text_not_contains`.
+
+The `interpreter` field solves cross-platform issues: when set, the command runs as `[interpreter, "-c", command]` instead of through the default system shell. Use `bash`, `sh`, `pwsh`, `python3`, or any executable on `PATH`.
+
+All three formats can be mixed in the same list. Existing plans with plain string commands continue to work unchanged.
+
 ## Policies and Boundaries
 
 `.planguard/policies.yaml` defines pattern-based rules enforced by `planguard check`. Rules can `block` or `require_approval`, and are scoped to specific paths. Content-pattern rules are evaluated against actual changed files after activation.
@@ -164,8 +260,22 @@ Every plan moves through: **draft** → **active** → **completed** → **archi
 |--------|---------|
 | `draft` | Plan exists, not yet approved for implementation |
 | `active` | Checks passed, implementation allowed |
+| `suspended` | Paused — other plans can proceed on overlapping scope |
 | `completed` | Work done, verified |
 | `archived` | Removed from active consideration |
+
+### Suspend and Resume
+
+When one plan needs to pause while a smaller change goes through:
+
+```bash
+planguard suspend my_plan --reason "waiting on API deploy"
+# ... other work proceeds, even on overlapping scope ...
+planguard resume my_plan                    # picks up where it left off
+planguard resume my_plan --refresh-baseline # re-capture baseline if repo changed significantly
+```
+
+Suspended plans retain their activation data and are excluded from collision detection.
 
 ## Multiple Plans
 
@@ -173,7 +283,7 @@ Each piece of work gets its own plan with a declared scope. `planguard check` de
 
 ## Session Log
 
-Every lifecycle event is logged to `.planguard/log.jsonl` — an append-only audit trail of what happened, when, and against which git state.
+Every lifecycle event is logged to `.planguard/state/log.jsonl` — an append-only audit trail of what happened, when, and against which git state.
 
 ```bash
 planguard log                # all events
@@ -185,10 +295,13 @@ planguard log my_plan        # filter by plan
 ```bash
 planguard init                    # Set up PlanGuard in a project (wizard)
 planguard plan                    # Create a plan (wizard)
+planguard plan --template <name>  # Create from template: docs-only, refactor, schema-change, service-integration
 planguard check [name]            # Run all checks, or check a specific plan
 planguard activate <name>         # Mark plan as ready to implement
-planguard verify <name>           # Run verification commands from the plan
-planguard complete <name>         # Mark plan as done
+planguard verify <name>           # Run verification commands (strings, interpreter, or structured checks)
+planguard complete <name>         # Mark plan as done (auto-fills handoff metadata)
+planguard suspend <name>          # Pause plan, unblock overlapping work
+planguard resume <name>           # Resume a suspended plan
 planguard archive <name>          # Archive a plan
 planguard guard                   # Scan staged diff for database/schema risks
 planguard status                  # Table of all plans with status, priority, owner
@@ -205,7 +318,7 @@ PlanGuard works with any agent that reads `AGENTS.md` — Claude, Codex, Cursor,
 
 **Override the risk threshold** — add `risk_threshold: 12` to the `plan:` section of any `plan.yaml` (default is 6).
 
-**Remove PlanGuard** — delete `.planguard/`, `docs/planning/`, the PlanGuard section from `AGENTS.md`, and uninstall the CLI (`pipx uninstall planguard`).
+**Remove PlanGuard** — delete `.planguard/`, the PlanGuard section from `AGENTS.md`, and uninstall the CLI (`pipx uninstall planguard`).
 
 ## Requirements
 

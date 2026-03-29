@@ -2,8 +2,14 @@
 *.pyc
 .vscode/
 .idea/
+.claude/
+.codex
 .DS_Store
 Thumbs.db
 .venv/
 HANDOFF*.md
 dist/
+
+# PlanGuard local artifacts
+.planguard/plans/
+.planguard/state/

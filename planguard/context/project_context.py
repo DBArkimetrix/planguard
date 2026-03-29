@@ -10,7 +10,7 @@ Files:
   .planguard/boundaries.md    — files/modules the agent must never modify
   .planguard/glossary.md      — domain terms mapped to code entities
   .planguard/policies.yaml    — governance rules (pattern-based checks)
-  .planguard/log.jsonl        — append-only session history
+  .planguard/state/           — local runtime state (logs, registries, plan status)
 """
 
 from __future__ import annotations
@@ -172,7 +172,15 @@ def context_dir(root: Path | str = ".") -> Path:
 
 
 def has_context(root: Path | str = ".") -> bool:
-    return context_dir(root).is_dir()
+    ctx = context_dir(root)
+    required = [
+        ctx / "project.yaml",
+        ctx / "conventions.md",
+        ctx / "boundaries.md",
+        ctx / "glossary.md",
+        ctx / "policies.yaml",
+    ]
+    return all(path.exists() for path in required)
 
 
 def init_context(

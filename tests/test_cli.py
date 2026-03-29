@@ -6,6 +6,7 @@ import yaml
 from typer.testing import CliRunner
 
 from planguard import __version__
+from planguard.config import get_default_plans_root, get_plans_root, get_registry_path, get_status_path
 from planguard.cli import app
 
 
@@ -22,7 +23,7 @@ class CliTests(unittest.TestCase):
         subprocess.run(["git", "commit", "-m", "initial"], check=True, capture_output=True)
 
     def _set_verify_commands(self, plan_name: str, commands: list[str]) -> None:
-        plan_path = Path("docs") / plan_name / "plan.yaml"
+        plan_path = get_plans_root() / plan_name / "plan.yaml"
         data = yaml.safe_load(plan_path.read_text(encoding="utf-8"))
         data["verify_commands"] = commands
         plan_path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
@@ -38,9 +39,9 @@ class CliTests(unittest.TestCase):
             ])
             self.assertEqual(result.exit_code, 0, result.output)
 
-            plan_dir = Path("docs/test_plan")
+            plan_dir = get_default_plans_root() / "test_plan"
             self.assertTrue((plan_dir / "plan.yaml").exists())
-            self.assertTrue((plan_dir / "status.yaml").exists())
+            self.assertTrue(get_status_path("test_plan").exists())
 
     def test_validate_command_succeeds_for_generated_plan(self) -> None:
         with self.runner.isolated_filesystem():
@@ -50,6 +51,22 @@ class CliTests(unittest.TestCase):
                 "--no-wizard",
             ])
             self.assertEqual(create_result.exit_code, 0, create_result.output)
+
+            validate_result = self.runner.invoke(app, ["validate"])
+            self.assertEqual(validate_result.exit_code, 0, validate_result.output)
+
+    def test_validate_uses_configured_plans_root_by_default(self) -> None:
+        with self.runner.isolated_filesystem():
+            Path(".planguard").mkdir()
+            Path(".planguard/config.yaml").write_text("plans_root: plans\n", encoding="utf-8")
+
+            create_result = self.runner.invoke(app, [
+                "plan", "custom root",
+                "--objective", "Use custom plans root",
+                "--no-wizard",
+            ])
+            self.assertEqual(create_result.exit_code, 0, create_result.output)
+            self.assertTrue(Path("plans/custom_root/plan.yaml").exists())
 
             validate_result = self.runner.invoke(app, ["validate"])
             self.assertEqual(validate_result.exit_code, 0, validate_result.output)
@@ -160,13 +177,15 @@ class CliTests(unittest.TestCase):
         with self.runner.isolated_filesystem():
             result = self.runner.invoke(app, ["init", ".", "--no-wizard"])
             self.assertEqual(result.exit_code, 0, result.output)
-            self.assertTrue(Path("docs").is_dir())
             self.assertTrue(Path("AGENTS.md").exists())
             self.assertTrue(Path(".planguard").is_dir())
+            self.assertTrue((get_default_plans_root()).is_dir())
             self.assertTrue(Path(".planguard/project.yaml").exists())
             self.assertTrue(Path(".planguard/conventions.md").exists())
             self.assertTrue(Path(".planguard/boundaries.md").exists())
             self.assertTrue(Path(".planguard/policies.yaml").exists())
+            self.assertIn(".planguard/plans/", Path(".gitignore").read_text(encoding="utf-8"))
+            self.assertIn(".planguard/state/", Path(".gitignore").read_text(encoding="utf-8"))
             content = Path("AGENTS.md").read_text()
             self.assertIn("agent-engineering-framework", content)
 
@@ -196,6 +215,143 @@ class CliTests(unittest.TestCase):
             self.assertEqual(result.exit_code, 0, result.output)
             second_content = Path("AGENTS.md").read_text()
             self.assertEqual(first_content, second_content)
+
+    def test_init_refresh_agents_updates_existing_framework_section(self) -> None:
+        with self.runner.isolated_filesystem():
+            Path("AGENTS.md").write_text(
+                "# AGENTS.md\n\n## Local Rules\n\n- Keep this.\n\n<!-- agent-engineering-framework -->\n\nOLD FRAMEWORK TEXT\n",
+                encoding="utf-8",
+            )
+
+            result = self.runner.invoke(app, ["init", ".", "--no-wizard", "--refresh-agents"])
+            self.assertEqual(result.exit_code, 0, result.output)
+
+            content = Path("AGENTS.md").read_text(encoding="utf-8")
+            self.assertIn("Local Rules", content)
+            self.assertIn("Keep this.", content)
+            self.assertIn("Run verification: `planguard verify <plan_name>`", content)
+            self.assertNotIn("OLD FRAMEWORK TEXT", content)
+
+    def test_upgrade_refreshes_existing_framework_section(self) -> None:
+        with self.runner.isolated_filesystem():
+            Path("AGENTS.md").write_text(
+                "# AGENTS.md\n\n## Local Rules\n\n- Keep this.\n\n<!-- agent-engineering-framework -->\n\nOLD FRAMEWORK TEXT\n",
+                encoding="utf-8",
+            )
+
+            result = self.runner.invoke(app, ["upgrade", ".", "--no-wizard"])
+            self.assertEqual(result.exit_code, 0, result.output)
+
+            content = Path("AGENTS.md").read_text(encoding="utf-8")
+            self.assertIn("Useful variations:", content)
+            self.assertNotIn("OLD FRAMEWORK TEXT", content)
+
+    def test_upgrade_migrates_plan_storage_to_new_root(self) -> None:
+        with self.runner.isolated_filesystem():
+            Path("docs/migrate_me").mkdir(parents=True)
+            Path("docs/migrate_me/plan.yaml").write_text("plan:\n  name: migrate_me\n", encoding="utf-8")
+            self.assertTrue(Path("docs/migrate_me/plan.yaml").exists())
+
+            result = self.runner.invoke(app, [
+                "upgrade", ".",
+                "--no-wizard",
+                "--plans-root", ".planguard/plans",
+            ])
+            self.assertEqual(result.exit_code, 0, result.output)
+
+            self.assertTrue((get_default_plans_root() / "migrate_me" / "plan.yaml").exists())
+            self.assertFalse(Path("docs/migrate_me").exists())
+            self.assertFalse(Path(".planguard/config.yaml").exists())
+            self.assertTrue(get_registry_path().exists())
+
+    def test_upgrade_defaults_legacy_docs_repo_to_local_plans_root(self) -> None:
+        with self.runner.isolated_filesystem():
+            Path("docs/legacy_plan").mkdir(parents=True)
+            Path("docs/legacy_plan/plan.yaml").write_text("plan:\n  name: legacy_plan\n", encoding="utf-8")
+
+            result = self.runner.invoke(app, ["upgrade", ".", "--no-wizard"])
+            self.assertEqual(result.exit_code, 0, result.output)
+
+            self.assertTrue((get_default_plans_root() / "legacy_plan" / "plan.yaml").exists())
+            self.assertFalse(Path("docs/legacy_plan").exists())
+            self.assertFalse(Path(".planguard/config.yaml").exists())
+
+    def test_upgrade_moves_legacy_runtime_state_into_planguard_state(self) -> None:
+        with self.runner.isolated_filesystem():
+            Path("docs/legacy_plan").mkdir(parents=True)
+            Path("docs/planning").mkdir(parents=True)
+            Path("docs/legacy_plan/plan.yaml").write_text(
+                yaml.safe_dump({
+                    "plan": {
+                        "name": "legacy_plan",
+                        "status": "draft",
+                        "created": "2026-03-29",
+                        "priority": "medium",
+                    },
+                    "objective": "Legacy migration",
+                    "scope": {"included": ["src"]},
+                    "phases": [{"name": "analysis", "tasks": ["Review"]}],
+                    "backlog": [{
+                        "id": "B1",
+                        "title": "Review",
+                        "type": "task",
+                        "phase": "analysis",
+                        "scope": ["src"],
+                        "depends_on": [],
+                        "deliverables": ["notes"],
+                        "tests": [],
+                        "done_when": ["Reviewed"],
+                    }],
+                    "sprints": [{
+                        "id": "S1",
+                        "name": "Sprint 1",
+                        "goal": "Review",
+                        "backlog_items": ["B1"],
+                        "focus_paths": ["src"],
+                        "exit_criteria": ["Reviewed"],
+                    }],
+                    "risks": [],
+                    "dependencies": [],
+                }),
+                encoding="utf-8",
+            )
+            Path("docs/legacy_plan/status.yaml").write_text(
+                yaml.safe_dump({
+                    "status": {"phase": "planning", "progress_percent": 0},
+                    "activation": {
+                        "activated_at": "",
+                        "git_branch": "",
+                        "git_head": "",
+                        "baseline_changed_files": [],
+                        "baseline_fingerprints": {},
+                    },
+                    "verification": {
+                        "passed": False,
+                        "last_run": "",
+                        "git_branch": "",
+                        "git_head": "",
+                        "changed_files": [],
+                        "fingerprints": {},
+                        "commands": [],
+                    },
+                    "remaining_steps": [],
+                    "completed_steps": [],
+                    "handoff": {"summary": "", "notes": []},
+                }),
+                encoding="utf-8",
+            )
+            Path("docs/planning/active_plans.yaml").write_text(
+                "active_plans:\n  - name: legacy_plan\n    status: draft\n",
+                encoding="utf-8",
+            )
+
+            result = self.runner.invoke(app, ["upgrade", ".", "--no-wizard"])
+            self.assertEqual(result.exit_code, 0, result.output)
+
+            self.assertTrue(get_registry_path().exists())
+            self.assertTrue(get_status_path("legacy_plan").exists())
+            self.assertFalse(Path("docs/planning/active_plans.yaml").exists())
+            self.assertFalse(Path("docs/legacy_plan/status.yaml").exists())
 
     def test_version_option(self) -> None:
         result = self.runner.invoke(app, ["--version"])
@@ -276,3 +432,47 @@ class CliTests(unittest.TestCase):
             verify_result = self.runner.invoke(app, ["verify", "infer_verify"])
             self.assertEqual(verify_result.exit_code, 0, verify_result.output)
             self.assertIn("python -m unittest discover", verify_result.output)
+
+    def test_plan_invalid_template_returns_friendly_error(self) -> None:
+        with self.runner.isolated_filesystem():
+            result = self.runner.invoke(app, [
+                "plan", "bad template",
+                "--objective", "Template failure",
+                "--template", "nope",
+                "--no-wizard",
+            ])
+            self.assertEqual(result.exit_code, 1, result.output)
+            self.assertIn("Unknown template", result.output)
+            self.assertNotIn("Traceback", result.output)
+
+    def test_check_allows_declared_rename_with_content_change(self) -> None:
+        with self.runner.isolated_filesystem():
+            self._init_git_repo()
+            Path("src").mkdir()
+            Path("src/original.txt").write_text("one\n", encoding="utf-8")
+            subprocess.run(["git", "add", "src/original.txt"], check=True, capture_output=True)
+            subprocess.run(["git", "commit", "-m", "add source file"], check=True, capture_output=True)
+
+            result = self.runner.invoke(app, [
+                "plan", "rename plan",
+                "--objective", "Allow a declared rename",
+                "--scope", "src/original.txt",
+                "--no-wizard",
+            ])
+            self.assertEqual(result.exit_code, 0, result.output)
+
+            plan_path = get_plans_root() / "rename_plan" / "plan.yaml"
+            data = yaml.safe_load(plan_path.read_text(encoding="utf-8"))
+            data["renames"] = [{"from": "src/original.txt", "to": "src/renamed.txt"}]
+            plan_path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+            activate_result = self.runner.invoke(app, ["activate", "rename_plan"])
+            self.assertEqual(activate_result.exit_code, 0, activate_result.output)
+
+            Path("src/original.txt").rename("src/renamed.txt")
+            Path("src/renamed.txt").write_text("two\n", encoding="utf-8")
+            subprocess.run(["git", "add", "-A"], check=True, capture_output=True)
+
+            check_result = self.runner.invoke(app, ["check", "rename_plan"])
+            self.assertEqual(check_result.exit_code, 0, check_result.output)
+            self.assertNotIn("Changed files outside declared scope", check_result.output)

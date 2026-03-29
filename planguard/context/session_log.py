@@ -1,6 +1,6 @@
 """Append-only session log for tracking agent activity.
 
-Writes JSON lines to .planguard/log.jsonl. Each entry records a lifecycle
+Writes JSON lines to .planguard/state/log.jsonl. Each entry records a lifecycle
 event: plan created, checks run, plan activated, verification result, etc.
 """
 
@@ -10,14 +10,18 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from planguard.context.project_context import context_dir
+from planguard.config import get_log_path
 from planguard.safety.git_state import get_git_snapshot
 
 
 def _log_path(root: Path | str = ".") -> Path:
-    ctx = context_dir(root)
-    ctx.mkdir(parents=True, exist_ok=True)
-    return ctx / "log.jsonl"
+    path = get_log_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _legacy_log_path(root: Path | str = ".") -> Path:
+    return Path(root) / ".planguard" / "log.jsonl"
 
 
 def log_event(
@@ -52,7 +56,11 @@ def read_log(root: Path | str = ".", plan: str | None = None) -> list[dict]:
     """Read all log entries, optionally filtered by plan name."""
     path = _log_path(root)
     if not path.exists():
-        return []
+        legacy = _legacy_log_path(root)
+        if legacy.exists():
+            path = legacy
+        else:
+            return []
     entries: list[dict] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
