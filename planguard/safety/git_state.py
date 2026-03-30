@@ -50,7 +50,7 @@ def get_changed_files(
     if not is_git_repo(root):
         return []
 
-    result = _run_git(["status", "--porcelain"], root=root)
+    result = _run_git(["status", "--porcelain", "--untracked-files=all"], root=root)
     if result.returncode != 0:
         return []
 
@@ -116,7 +116,7 @@ def detect_git_renames(root: Path | str = ".") -> list[dict]:
     """Detect renames from git's rename detection in the working tree."""
     if not is_git_repo(root):
         return []
-    result = _run_git(["status", "--porcelain"], root=root)
+    result = _run_git(["status", "--porcelain", "--untracked-files=all"], root=root)
     if result.returncode != 0:
         return []
     renames: list[dict] = []
@@ -141,11 +141,24 @@ def get_git_snapshot(
     scope_paths: list[str] | None = None,
 ) -> dict:
     """Capture git state for audit and verification purposes."""
-    changed_files = get_changed_files(root=root, scope_paths=scope_paths)
+    all_changed_files = get_changed_files(root=root)
+    if scope_paths:
+        changed_files = [
+            path for path in all_changed_files
+            if any(path_matches(path, scope_path) for scope_path in scope_paths)
+        ]
+    else:
+        changed_files = list(all_changed_files)
+    context_changed_files = [
+        path for path in all_changed_files
+        if path not in changed_files
+    ]
     return {
         "is_git_repo": is_git_repo(root),
         "branch": get_branch(root),
         "head": get_head_sha(root),
         "changed_files": changed_files,
         "fingerprints": build_fingerprints(changed_files, root=root),
+        "context_changed_files": context_changed_files,
+        "context_fingerprints": build_fingerprints(context_changed_files, root=root),
     }

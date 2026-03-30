@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+import warnings
 
 import typer
 import yaml
@@ -87,6 +88,22 @@ _DEFAULT_REMAINING_STEPS = [
     "Verify (planguard verify)",
     "Complete plan (planguard complete)",
 ]
+_VERBOSE = False
+_KNOWN_WARNING_FILTERS = [
+    (DeprecationWarning, r"'BaseCommand' is deprecated and will be removed in Click 9\.0\."),
+    (DeprecationWarning, r"'parser\.split_arg_string' is deprecated and will be removed in Click 9\.0\."),
+    (DeprecationWarning, r"pkg_resources is deprecated as an API\."),
+    (UserWarning, r"pkg_resources is deprecated as an API\."),
+]
+
+
+def _configure_warning_filters() -> None:
+    """Suppress known third-party warning noise during normal CLI usage."""
+    for category, message in _KNOWN_WARNING_FILTERS:
+        warnings.filterwarnings("ignore", message=message, category=category)
+
+
+_configure_warning_filters()
 
 
 def _version_callback(value: bool) -> None:
@@ -104,8 +121,15 @@ def app_callback(
         is_eager=True,
         help="Show the installed PlanGuard version and exit.",
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        help="Show full tracebacks for unexpected internal errors.",
+    ),
 ) -> None:
     """PlanGuard commands."""
+    global _VERBOSE
+    _VERBOSE = verbose
 
 
 def _build_workflow_section(info: "ProjectInfo | None" = None) -> str:
@@ -379,6 +403,30 @@ def _write_status_yaml(plan_dir: Path, data: dict) -> None:
         yaml.safe_dump(data, sort_keys=False, default_flow_style=False),
         encoding="utf-8",
     )
+
+
+def _safe_read_plan_yaml(plan_dir: Path) -> tuple[dict | None, str | None]:
+    try:
+        return _read_plan_yaml(plan_dir), None
+    except yaml.YAMLError as exc:
+        return None, format_yaml_error(plan_dir / "plan.yaml", exc)
+    except OSError as exc:
+        return None, f"{plan_dir / 'plan.yaml'}: {exc}"
+
+
+def _safe_read_status_yaml(plan_dir: Path) -> tuple[dict | None, str | None]:
+    root = find_project_root_for_plan(plan_dir)
+    status_path = get_status_path(plan_dir.name, root)
+    if not status_path.exists():
+        legacy_path = plan_dir / "status.yaml"
+        if legacy_path.exists():
+            status_path = legacy_path
+    try:
+        return _read_status_yaml(plan_dir), None
+    except yaml.YAMLError as exc:
+        return None, format_yaml_error(status_path, exc)
+    except OSError as exc:
+        return None, f"{status_path}: {exc}"
 
 
 def _now_iso() -> str:
@@ -808,6 +856,8 @@ def _capture_git_state(scope_paths: list[str] | None = None) -> dict:
         "git_head": snapshot.get("head", ""),
         "changed_files": snapshot.get("changed_files", []),
         "fingerprints": snapshot.get("fingerprints", {}),
+        "context_changed_files": snapshot.get("context_changed_files", []),
+        "context_fingerprints": snapshot.get("context_fingerprints", {}),
         "captured_at": _now_iso(),
     }
 
@@ -907,6 +957,136 @@ def _verification_matches_current_state(plan_dir: Path) -> bool:
     }
 
     return expected == current_fingerprints
+
+
+def _summarize_issue(message: str, limit: int = 88) -> str:
+    compact = " ".join(str(message).split())
+    if len(compact) <= limit:
+        return compact
+    return compact[: limit - 3] + "..."
+
+
+def _verification_state(plan_dir: Path, status_data: dict | None) -> str:
+    if not isinstance(status_data, dict):
+        return "—"
+    verification = status_data.get("verification", {})
+    if not isinstance(verification, dict) or not verification.get("last_run"):
+        return "—"
+    if verification.get("passed"):
+        return "passed" if _verification_matches_current_state(plan_dir) else "stale"
+    return "failed"
+
+
+def _plan_overview(plan_dir: Path) -> dict:
+    plan_data, plan_error = _safe_read_plan_yaml(plan_dir)
+    status_data: dict | None = None
+    status_error: str | None = None
+    if plan_error is None:
+        status_data, status_error = _safe_read_status_yaml(plan_dir)
+
+    meta = plan_data.get("plan", {}) if isinstance(plan_data, dict) else {}
+    plan_status = meta.get("status", "unknown")
+    phase = "—"
+    if isinstance(status_data, dict):
+        phase = status_data.get("status", {}).get("phase", "—")
+
+    issue = ""
+    display_status = plan_status
+    if plan_error:
+        display_status = "invalid"
+        phase = "error"
+        issue = _summarize_issue(plan_error)
+    elif status_error:
+        phase = "error"
+        issue = _summarize_issue(status_error)
+
+    return {
+        "name": meta.get("name", plan_dir.name) if isinstance(meta, dict) else plan_dir.name,
+        "status": display_status,
+        "priority": meta.get("priority", "—") if isinstance(meta, dict) else "—",
+        "owner": meta.get("owner", "—") if isinstance(meta, dict) else "—",
+        "phase": phase,
+        "verified": _verification_state(plan_dir, status_data) if not plan_error else "—",
+        "issue": issue,
+        "plan_error": plan_error,
+        "status_error": status_error,
+    }
+
+
+def _baseline_mode_for_plan(plan_dir: Path) -> str:
+    status_data, status_error = _safe_read_status_yaml(plan_dir)
+    if status_error or not isinstance(status_data, dict):
+        return "scoped"
+    activation = status_data.get("activation", {})
+    if not isinstance(activation, dict):
+        return "scoped"
+    return activation.get("baseline_mode", "scoped")
+
+
+def _out_of_scope_context_since_activation(plan_dir: Path, current_snapshot: dict) -> tuple[list[str], list[str]]:
+    status_data = _read_status_yaml(plan_dir)
+    activation = status_data.get("activation", {})
+    if not isinstance(activation, dict) or activation.get("baseline_mode", "scoped") != "scoped":
+        return [], []
+
+    baseline_context = activation.get("context_fingerprints", {})
+    if not isinstance(baseline_context, dict):
+        baseline_context = {}
+
+    ignored = _plan_bookkeeping_files(plan_dir)
+    current_context = [
+        path for path in current_snapshot.get("context_changed_files", [])
+        if path not in ignored
+    ]
+    current_context_fingerprints = current_snapshot.get("context_fingerprints", {})
+    plan_data = _read_plan_yaml(plan_dir)
+    renames = plan_data.get("renames", [])
+
+    new_or_changed: list[str] = []
+    for path in current_context:
+        if any(
+            path == rename.get("to") and any(path_matches(rename.get("from", ""), scope_path) for scope_path in plan_data.get("scope", {}).get("included", []))
+            for rename in renames
+        ):
+            continue
+        if current_context_fingerprints.get(path) != baseline_context.get(path):
+            new_or_changed.append(path)
+
+    baseline_context_paths = [
+        path for path in activation.get("context_changed_files", [])
+        if path not in ignored
+    ]
+    return sorted(set(baseline_context_paths)), sorted(set(new_or_changed))
+
+
+def _capture_activation_snapshot(plan_dir: Path, plan_data: dict, *, baseline_mode: str) -> dict:
+    scope_included = plan_data.get("scope", {}).get("included", [])
+    scope_paths = scope_included if baseline_mode == "scoped" else None
+    baseline = _capture_git_state(scope_paths=scope_paths or None)
+    ignored = _plan_bookkeeping_files(plan_dir)
+    baseline["changed_files"] = [
+        path for path in baseline.get("changed_files", [])
+        if path not in ignored
+    ]
+    baseline["fingerprints"] = {
+        path: fingerprint
+        for path, fingerprint in baseline.get("fingerprints", {}).items()
+        if path not in ignored
+    }
+    baseline["context_changed_files"] = [
+        path for path in baseline.get("context_changed_files", [])
+        if path not in ignored
+    ]
+    baseline["context_fingerprints"] = {
+        path: fingerprint
+        for path, fingerprint in baseline.get("context_fingerprints", {}).items()
+        if path not in ignored
+    }
+    rename_sources = [rename.get("from", "") for rename in plan_data.get("renames", []) if rename.get("from")]
+    if rename_sources:
+        baseline["fingerprints"].update(build_fingerprints(rename_sources))
+    baseline["baseline_mode"] = baseline_mode
+    return baseline
 
 
 def _default_verify_commands(info) -> list[str]:
@@ -1463,7 +1643,11 @@ def _check_single(plan_dir: Path) -> bool:
         return False
 
     status = data.get("plan", {}).get("status", "unknown")
-    current_snapshot = _capture_git_state() if status == "active" else {}
+    scope_paths = data.get("scope", {}).get("included", [])
+    baseline_mode = _baseline_mode_for_plan(plan_dir)
+    current_snapshot = _capture_git_state(
+        scope_paths=None if baseline_mode == "repo" else (scope_paths or None)
+    ) if status == "active" else {}
     diff_paths = _files_changed_since_activation(plan_dir, current_snapshot) if status == "active" else []
 
     # 2. Risk score.
@@ -1477,7 +1661,6 @@ def _check_single(plan_dir: Path) -> bool:
         all_ok = False
 
     # 2b. Scope enforcement against real changes after activation.
-    scope_paths = data.get("scope", {}).get("included", [])
     if diff_paths:
         out_of_scope = _scope_mismatches(plan_dir, scope_paths, diff_paths)
         if out_of_scope:
@@ -1489,6 +1672,16 @@ def _check_single(plan_dir: Path) -> bool:
             print(f"{_PASS} Changed files remain within declared scope")
     elif status == "active" and current_snapshot.get("is_git_repo"):
         print("[dim]  - No post-activation changes detected[/dim]")
+
+    if status == "active" and baseline_mode == "scoped":
+        activation_context, new_out_of_scope = _out_of_scope_context_since_activation(plan_dir, current_snapshot)
+        if new_out_of_scope:
+            print(f"{_FAIL} Changed files outside declared scope:")
+            for path in new_out_of_scope:
+                print(f"    {path}")
+            all_ok = False
+        elif activation_context:
+            print("[dim]  - Out-of-scope repo changes are tracked separately from the scoped baseline[/dim]")
 
     # 2c. Rename hints — suggest adding a renames section for detected git renames.
     if status == "active":
@@ -1578,42 +1771,42 @@ def status():
         raise typer.Exit(code=0)
 
     table = Table(title="Plans")
-    table.add_column("Name", style="cyan")
+    table.add_column("Name", style="cyan", overflow="fold")
     table.add_column("Status", style="bold")
     table.add_column("Priority")
     table.add_column("Owner")
     table.add_column("Phase")
+    table.add_column("Verified")
+    issues: list[tuple[str, str]] = []
 
     for pd in plan_dirs:
-        data = _read_plan_yaml(pd)
-        meta = data.get("plan", {})
-
-        # Read runtime status for phase info.
-        phase = "—"
-        try:
-            sdata = _read_status_yaml(pd)
-            phase = sdata.get("status", {}).get("phase", "—")
-        except Exception:
-            pass
-
-        plan_status = meta.get("status", "unknown")
+        overview = _plan_overview(pd)
+        plan_status = overview["status"]
         status_style = {
             "draft": "yellow",
             "active": "green",
             "suspended": "yellow",
             "completed": "dim",
             "archived": "dim",
+            "invalid": "red",
         }.get(plan_status, "white")
 
         table.add_row(
-            meta.get("name", pd.name),
+            overview["name"],
             f"[{status_style}]{plan_status}[/{status_style}]",
-            meta.get("priority", "—"),
-            meta.get("owner", "—"),
-            phase,
+            overview["priority"],
+            overview["owner"],
+            overview["phase"],
+            overview["verified"],
         )
+        if overview["issue"]:
+            issues.append((overview["name"], overview["issue"]))
 
     print(table)
+    if issues:
+        print("[yellow]Plan issues:[/yellow]")
+        for name, issue in issues:
+            print(f"  {name}: {issue}")
 
 
 # ---------------------------------------------------------------------------
@@ -1621,14 +1814,30 @@ def status():
 # ---------------------------------------------------------------------------
 
 @app.command()
-def activate(name: str = typer.Argument(..., help="Plan name to activate.")):
+def activate(
+    name: str = typer.Argument(..., help="Plan name to activate."),
+    baseline_mode: str = typer.Option(
+        "scoped",
+        "--baseline-mode",
+        help="Capture baseline from the declared scope only ('scoped') or the whole repo ('repo').",
+    ),
+):
     """Mark a plan as active (ready for implementation)."""
     plan_dir = _resolve_plan(name)
     if not plan_dir:
         print(f"[red]Plan not found: {name}[/red]")
         raise typer.Exit(code=1)
 
-    current = _read_plan_yaml(plan_dir).get("plan", {}).get("status")
+    if baseline_mode not in {"scoped", "repo"}:
+        print(f"[red]Unsupported baseline mode: {baseline_mode}. Use 'scoped' or 'repo'.[/red]")
+        raise typer.Exit(code=1)
+
+    plan_data, plan_error = _safe_read_plan_yaml(plan_dir)
+    if plan_error:
+        print(f"[red]Cannot activate malformed plan:[/red] {plan_error}")
+        raise typer.Exit(code=1)
+
+    current = plan_data.get("plan", {}).get("status")
     if current == "active":
         print(f"[yellow]{name} is already active.[/yellow]")
         raise typer.Exit(code=0)
@@ -1661,26 +1870,30 @@ def activate(name: str = typer.Argument(..., help="Plan name to activate.")):
         raise typer.Exit(code=1)
 
     _set_plan_status(plan_dir, "active")
-    data = _read_plan_yaml(plan_dir)
-    scope_included = data.get("scope", {}).get("included", [])
     status_data = _read_status_yaml(plan_dir)
-    baseline = _capture_git_state(scope_paths=scope_included or None)
-    rename_sources = [rename.get("from", "") for rename in data.get("renames", []) if rename.get("from")]
-    if rename_sources:
-        baseline["fingerprints"].update(build_fingerprints(rename_sources))
+    baseline = _capture_activation_snapshot(plan_dir, plan_data, baseline_mode=baseline_mode)
     status_data["activation"] = {
         "activated_at": baseline["captured_at"],
         "git_branch": baseline["git_branch"],
         "git_head": baseline["git_head"],
         "baseline_changed_files": baseline["changed_files"],
         "baseline_fingerprints": baseline["fingerprints"],
+        "baseline_mode": baseline_mode,
+        "context_changed_files": baseline["context_changed_files"],
+        "context_fingerprints": baseline["context_fingerprints"],
     }
     _write_status_yaml(plan_dir, status_data)
     log_event("plan_activated", plan=name, details={
         "baseline_changed_files": baseline["changed_files"],
+        "baseline_mode": baseline_mode,
+        "context_changed_files": baseline["context_changed_files"],
     })
     print()
     print(f"[green]{name} is now active. You may begin implementation.[/green]")
+    if baseline_mode == "scoped" and baseline["context_changed_files"]:
+        print("[dim]Out-of-scope repo changes were recorded as context only:[/dim]")
+        for path in baseline["context_changed_files"]:
+            print(f"[dim]  {path}[/dim]")
 
 
 # ---------------------------------------------------------------------------
@@ -1695,7 +1908,12 @@ def complete(name: str = typer.Argument(..., help="Plan name to mark as complete
         print(f"[red]Plan not found: {name}[/red]")
         raise typer.Exit(code=1)
 
-    current = _read_plan_yaml(plan_dir).get("plan", {}).get("status")
+    plan_data, plan_error = _safe_read_plan_yaml(plan_dir)
+    if plan_error:
+        print(f"[red]Cannot complete malformed plan:[/red] {plan_error}")
+        raise typer.Exit(code=1)
+
+    current = plan_data.get("plan", {}).get("status")
     if current != "active":
         print("[red]Only active plans can be completed.[/red]")
         raise typer.Exit(code=1)
@@ -1763,7 +1981,12 @@ def suspend(
         print(f"[red]Plan not found: {name}[/red]")
         raise typer.Exit(code=1)
 
-    current = _read_plan_yaml(plan_dir).get("plan", {}).get("status")
+    plan_data, plan_error = _safe_read_plan_yaml(plan_dir)
+    if plan_error:
+        print(f"[red]Cannot suspend malformed plan:[/red] {plan_error}")
+        raise typer.Exit(code=1)
+
+    current = plan_data.get("plan", {}).get("status")
     if current != "active":
         print(f"[red]Only active plans can be suspended (current: {current}).[/red]")
         raise typer.Exit(code=1)
@@ -1789,6 +2012,11 @@ def suspend(
 def resume(
     name: str = typer.Argument(..., help="Plan name to resume."),
     refresh_baseline: bool = typer.Option(False, "--refresh-baseline", help="Re-capture baseline snapshot."),
+    baseline_mode: str = typer.Option(
+        None,
+        "--baseline-mode",
+        help="Override baseline capture mode when refreshing the baseline ('scoped' or 'repo').",
+    ),
 ):
     """Resume a suspended plan."""
     plan_dir = _resolve_plan(name)
@@ -1796,7 +2024,12 @@ def resume(
         print(f"[red]Plan not found: {name}[/red]")
         raise typer.Exit(code=1)
 
-    current = _read_plan_yaml(plan_dir).get("plan", {}).get("status")
+    plan_data, plan_error = _safe_read_plan_yaml(plan_dir)
+    if plan_error:
+        print(f"[red]Cannot resume malformed plan:[/red] {plan_error}")
+        raise typer.Exit(code=1)
+
+    current = plan_data.get("plan", {}).get("status")
     if current != "suspended":
         print(f"[red]Only suspended plans can be resumed (current: {current}).[/red]")
         raise typer.Exit(code=1)
@@ -1807,25 +2040,34 @@ def resume(
     status_data["suspension"]["resumed_at"] = _now_iso()
 
     if refresh_baseline:
-        plan_data = _read_plan_yaml(plan_dir)
-        scope_included = plan_data.get("scope", {}).get("included", [])
-        baseline = _capture_git_state(scope_paths=scope_included or None)
-        rename_sources = [rename.get("from", "") for rename in plan_data.get("renames", []) if rename.get("from")]
-        if rename_sources:
-            baseline["fingerprints"].update(build_fingerprints(rename_sources))
+        selected_mode = baseline_mode or _baseline_mode_for_plan(plan_dir)
+        if selected_mode not in {"scoped", "repo"}:
+            print(f"[red]Unsupported baseline mode: {selected_mode}. Use 'scoped' or 'repo'.[/red]")
+            raise typer.Exit(code=1)
+        baseline = _capture_activation_snapshot(plan_dir, plan_data, baseline_mode=selected_mode)
         status_data["activation"] = {
             "activated_at": baseline["captured_at"],
             "git_branch": baseline["git_branch"],
             "git_head": baseline["git_head"],
             "baseline_changed_files": baseline["changed_files"],
             "baseline_fingerprints": baseline["fingerprints"],
+            "baseline_mode": selected_mode,
+            "context_changed_files": baseline["context_changed_files"],
+            "context_fingerprints": baseline["context_fingerprints"],
         }
         print(f"[green]{name} resumed with refreshed baseline.[/green]")
+        if selected_mode == "scoped" and baseline["context_changed_files"]:
+            print("[dim]Out-of-scope repo changes were recorded as context only:[/dim]")
+            for path in baseline["context_changed_files"]:
+                print(f"[dim]  {path}[/dim]")
     else:
         print(f"[green]{name} resumed.[/green]")
 
     _write_status_yaml(plan_dir, status_data)
-    log_event("plan_resumed", plan=name, details={"refresh_baseline": refresh_baseline})
+    log_event("plan_resumed", plan=name, details={
+        "refresh_baseline": refresh_baseline,
+        "baseline_mode": baseline_mode or _baseline_mode_for_plan(plan_dir),
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -1844,13 +2086,16 @@ def list_plans(
         raise typer.Exit(code=0)
 
     for pd in plan_dirs:
-        data = _read_plan_yaml(pd)
-        meta = data.get("plan", {})
-        plan_status = meta.get("status", "unknown")
+        overview = _plan_overview(pd)
+        plan_status = overview["status"]
         if not show_all and plan_status in ("completed", "archived"):
             continue
-        priority = meta.get("priority", "—")
-        print(f"  {plan_status}  {meta.get('name', pd.name)}  (priority: {priority})")
+        line = f"  {plan_status}  {overview['name']}  (priority: {overview['priority']})"
+        if overview["verified"] != "—":
+            line += f" verify={overview['verified']}"
+        if overview["issue"]:
+            line += f"\n    issue: {overview['issue']}"
+        print(line)
 
 
 # ---------------------------------------------------------------------------
@@ -1875,7 +2120,10 @@ def verify(name: str = typer.Argument(..., help="Plan name to verify.")):
         print(f"[red]Plan not found: {name}[/red]")
         raise typer.Exit(code=1)
 
-    data = _read_plan_yaml(plan_dir)
+    data, plan_error = _safe_read_plan_yaml(plan_dir)
+    if plan_error:
+        print(f"[red]Cannot verify malformed plan:[/red] {plan_error}")
+        raise typer.Exit(code=1)
     commands = data.get("verify_commands", [])
     done_when = data.get("done_when", [])
     inferred = False
@@ -2067,7 +2315,13 @@ def validate(docs_dir: str | None = typer.Argument(None, help="Plans directory t
 # ---------------------------------------------------------------------------
 
 def main():
-    app()
+    try:
+        app()
+    except Exception as exc:
+        if _VERBOSE:
+            raise
+        print(f"[red]Unexpected internal error:[/red] {exc}")
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

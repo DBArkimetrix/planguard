@@ -1,13 +1,15 @@
 from pathlib import Path
 import subprocess
+import sys
 import unittest
+import warnings
 
 import yaml
 from typer.testing import CliRunner
 
 from planguard import __version__
 from planguard.config import get_default_plans_root, get_plans_root, get_registry_path, get_status_path
-from planguard.cli import app
+from planguard.cli import _configure_warning_filters, app
 
 
 class CliTests(unittest.TestCase):
@@ -22,7 +24,7 @@ class CliTests(unittest.TestCase):
         subprocess.run(["git", "add", "README.md"], check=True, capture_output=True)
         subprocess.run(["git", "commit", "-m", "initial"], check=True, capture_output=True)
 
-    def _set_verify_commands(self, plan_name: str, commands: list[str]) -> None:
+    def _set_verify_commands(self, plan_name: str, commands: list) -> None:
         plan_path = get_plans_root() / plan_name / "plan.yaml"
         data = yaml.safe_load(plan_path.read_text(encoding="utf-8"))
         data["verify_commands"] = commands
@@ -222,6 +224,43 @@ class CliTests(unittest.TestCase):
             result = self.runner.invoke(app, ["activate", "activate_test"])
             self.assertEqual(result.exit_code, 0, result.output)
             self.assertIn("active", result.output)
+
+    def test_status_shows_invalid_plans_without_crashing(self) -> None:
+        with self.runner.isolated_filesystem():
+            self.runner.invoke(app, [
+                "plan", "healthy plan",
+                "--objective", "Healthy",
+                "--no-wizard",
+            ])
+            bad_dir = get_default_plans_root() / "broken_status_view"
+            bad_dir.mkdir(parents=True, exist_ok=True)
+            (bad_dir / "plan.yaml").write_text("plan:\n  name: broken_status_view\n  status: [\n", encoding="utf-8")
+
+            result = self.runner.invoke(app, ["status"])
+            self.assertEqual(result.exit_code, 0, result.output)
+            self.assertIn("healthy_plan", result.output)
+            self.assertIn("broken_status_view", result.output)
+            self.assertIn("invalid", result.output)
+            self.assertRegex(result.output, r"broken_status_view/plan\.yaml:\d+:\d+")
+            self.assertNotIn("Traceback", result.output)
+
+    def test_list_shows_invalid_plans_without_crashing(self) -> None:
+        with self.runner.isolated_filesystem():
+            self.runner.invoke(app, [
+                "plan", "healthy plan",
+                "--objective", "Healthy",
+                "--no-wizard",
+            ])
+            bad_dir = get_default_plans_root() / "broken_list_view"
+            bad_dir.mkdir(parents=True, exist_ok=True)
+            (bad_dir / "plan.yaml").write_text("plan:\n  name: broken_list_view\n  status: [\n", encoding="utf-8")
+
+            result = self.runner.invoke(app, ["list"])
+            self.assertEqual(result.exit_code, 0, result.output)
+            self.assertIn("healthy_plan", result.output)
+            self.assertIn("broken_list_view", result.output)
+            self.assertIn("issue:", result.output)
+            self.assertNotIn("Traceback", result.output)
 
     def test_complete_sets_status_to_completed(self) -> None:
         with self.runner.isolated_filesystem():
@@ -700,6 +739,60 @@ class CliTests(unittest.TestCase):
             self.assertNotEqual(result.exit_code, 0)
             self.assertIn("Changed files outside declared scope", result.output)
 
+    def test_scoped_baseline_tracks_out_of_scope_repo_dirt_separately(self) -> None:
+        with self.runner.isolated_filesystem():
+            self._init_git_repo()
+            Path("src").mkdir()
+            Path("src/in_scope.py").write_text("print('ok')\n", encoding="utf-8")
+            Path("README.md").write_text("dirty before activation\n", encoding="utf-8")
+
+            result = self.runner.invoke(app, [
+                "plan", "scoped baseline",
+                "--objective", "Scoped activation baseline",
+                "--scope", "src",
+                "--no-wizard",
+            ])
+            self.assertEqual(result.exit_code, 0, result.output)
+
+            activate_result = self.runner.invoke(app, ["activate", "scoped_baseline"])
+            self.assertEqual(activate_result.exit_code, 0, activate_result.output)
+            self.assertIn("context only", activate_result.output)
+
+            status_data = yaml.safe_load(get_status_path("scoped_baseline").read_text(encoding="utf-8"))
+            activation = status_data["activation"]
+            self.assertEqual(activation["baseline_mode"], "scoped")
+            self.assertEqual(activation["baseline_changed_files"], ["src/in_scope.py"])
+            self.assertEqual(activation["context_changed_files"], ["README.md"])
+
+            check_result = self.runner.invoke(app, ["check", "scoped_baseline"])
+            self.assertEqual(check_result.exit_code, 0, check_result.output)
+            self.assertIn("tracked separately from the scoped baseline", check_result.output)
+
+    def test_repo_baseline_mode_can_capture_repo_wide_dirty_state(self) -> None:
+        with self.runner.isolated_filesystem():
+            self._init_git_repo()
+            Path("src").mkdir()
+            Path("src/in_scope.py").write_text("print('ok')\n", encoding="utf-8")
+            Path("README.md").write_text("dirty before activation\n", encoding="utf-8")
+
+            result = self.runner.invoke(app, [
+                "plan", "repo baseline",
+                "--objective", "Repo activation baseline",
+                "--scope", "src",
+                "--no-wizard",
+            ])
+            self.assertEqual(result.exit_code, 0, result.output)
+
+            activate_result = self.runner.invoke(app, ["activate", "repo_baseline", "--baseline-mode", "repo"])
+            self.assertEqual(activate_result.exit_code, 0, activate_result.output)
+
+            status_data = yaml.safe_load(get_status_path("repo_baseline").read_text(encoding="utf-8"))
+            activation = status_data["activation"]
+            self.assertEqual(activation["baseline_mode"], "repo")
+            self.assertIn("README.md", activation["baseline_changed_files"])
+            self.assertIn("src/in_scope.py", activation["baseline_changed_files"])
+            self.assertEqual(activation["context_changed_files"], [])
+
     def test_complete_requires_fresh_verification(self) -> None:
         with self.runner.isolated_filesystem():
             self._init_git_repo()
@@ -756,6 +849,63 @@ class CliTests(unittest.TestCase):
             verify_result = self.runner.invoke(app, ["verify", "infer_verify"])
             self.assertEqual(verify_result.exit_code, 0, verify_result.output)
             self.assertIn("python -m unittest discover", verify_result.output)
+
+    def test_verify_supports_structured_checks_and_explicit_interpreter(self) -> None:
+        with self.runner.isolated_filesystem():
+            Path("README.md").write_text("hello world\n", encoding="utf-8")
+            Path("after.txt").write_text("moved\n", encoding="utf-8")
+            result = self.runner.invoke(app, [
+                "plan", "structured verify",
+                "--objective", "Structured verification",
+                "--scope", "README.md, after.txt",
+                "--no-wizard",
+            ])
+            self.assertEqual(result.exit_code, 0, result.output)
+            self._set_verify_commands("structured_verify", [
+                {"check": "file_exists", "path": "README.md"},
+                {"check": "file_not_exists", "path": "before.txt"},
+                {"check": "file_moved", "from": "before.txt", "to": "after.txt"},
+                {"check": "text_contains", "path": "README.md", "pattern": "hello"},
+                {"check": "text_not_contains", "path": "README.md", "pattern": "goodbye"},
+                {"command": "import pathlib; raise SystemExit(0 if pathlib.Path('README.md').exists() else 1)", "interpreter": sys.executable},
+            ])
+            self.runner.invoke(app, ["activate", "structured_verify"])
+
+            verify_result = self.runner.invoke(app, ["verify", "structured_verify"])
+            self.assertEqual(verify_result.exit_code, 0, verify_result.output)
+            self.assertIn("file_exists: README.md", verify_result.output)
+            self.assertIn("file_moved: before.txt -> after.txt", verify_result.output)
+            self.assertIn(f"(via {sys.executable})", verify_result.output)
+
+    def test_verify_reports_invalid_structured_entries_cleanly(self) -> None:
+        with self.runner.isolated_filesystem():
+            Path("README.md").write_text("hello world\n", encoding="utf-8")
+            result = self.runner.invoke(app, [
+                "plan", "bad verify entry",
+                "--objective", "Bad verification entry",
+                "--scope", "README.md",
+                "--no-wizard",
+            ])
+            self.assertEqual(result.exit_code, 0, result.output)
+            self._set_verify_commands("bad_verify_entry", [
+                {"check": "not_a_real_check", "path": "README.md"},
+                {"command": "", "interpreter": sys.executable},
+            ])
+            self.runner.invoke(app, ["activate", "bad_verify_entry"])
+
+            verify_result = self.runner.invoke(app, ["verify", "bad_verify_entry"])
+            self.assertNotEqual(verify_result.exit_code, 0)
+            self.assertIn("Supported checks:", verify_result.output)
+            self.assertIn("non-empty 'command' string", verify_result.output)
+            self.assertNotIn("Traceback", verify_result.output)
+
+    def test_cli_filters_known_dependency_warning_noise(self) -> None:
+        with warnings.catch_warnings(record=True) as captured:
+            warnings.simplefilter("always")
+            _configure_warning_filters()
+            warnings.warn("'BaseCommand' is deprecated and will be removed in Click 9.0.", DeprecationWarning)
+            warnings.warn("pkg_resources is deprecated as an API.", UserWarning)
+            self.assertEqual(captured, [])
 
     def test_plan_invalid_template_returns_friendly_error(self) -> None:
         with self.runner.isolated_filesystem():

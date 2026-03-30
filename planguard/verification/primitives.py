@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import subprocess
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 
@@ -39,11 +39,17 @@ def run_check(entry: str | dict, *, root: Path | str = ".") -> VerifyResult:
     if "check" in entry:
         return _run_primitive(entry, root=Path(root))
     if "command" in entry:
+        command = entry.get("command")
+        if not isinstance(command, str) or not command.strip():
+            return VerifyResult(label=str(entry), passed=False, detail="Command entries require a non-empty 'command' string")
+        timeout = entry.get("timeout", 300)
+        if not isinstance(timeout, int) or timeout <= 0:
+            return VerifyResult(label=str(entry), passed=False, detail="Command entries require a positive integer 'timeout'")
         return _run_shell(
-            entry["command"],
+            command,
             root=Path(root),
             interpreter=entry.get("interpreter"),
-            timeout=entry.get("timeout", 300),
+            timeout=timeout,
         )
 
     return VerifyResult(label=str(entry), passed=False, detail="Entry must have 'check' or 'command' key")
@@ -88,7 +94,7 @@ def _run_shell(
     try:
         if interpreter:
             result = subprocess.run(
-                [interpreter, "-c", cmd],
+                _build_interpreter_command(interpreter, cmd),
                 cwd=root,
                 capture_output=True,
                 text=True,
@@ -148,6 +154,17 @@ def _run_primitive(entry: dict, *, root: Path) -> VerifyResult:
     result = handler(entry, root=root)
     result.duration_seconds = round(time.monotonic() - start, 2)
     return result
+
+
+def _build_interpreter_command(interpreter: str, command: str) -> list[str]:
+    name = Path(interpreter).name.lower()
+    if name in {"cmd", "cmd.exe"}:
+        return [interpreter, "/C", command]
+    if name in {"powershell", "powershell.exe", "pwsh", "pwsh.exe"}:
+        return [interpreter, "-Command", command]
+    if name in {"python", "python.exe", "python3", "python3.exe", "py"}:
+        return [interpreter, "-c", command]
+    return [interpreter, "-c", command]
 
 
 def _check_file_exists(entry: dict, *, root: Path) -> VerifyResult:

@@ -48,6 +48,16 @@ Works on Linux, macOS, and Windows. Requires Python 3.9+.
 
 ## Upgrade
 
+### 0.7.2 Highlights
+
+PlanGuard `0.7.2` is a robustness release focused on day-to-day workflow quality:
+
+- `planguard status` and `planguard list` now tolerate malformed plans and flag them inline instead of crashing the whole command
+- baseline capture is scope-aware by default, with unrelated repo dirt tracked separately as context
+- `planguard activate --baseline-mode repo` and `planguard resume --refresh-baseline --baseline-mode repo` keep the older repo-wide baseline behavior when you explicitly want it
+- structured verification checks and explicit interpreters are documented as first-class verification options
+- common CLI usage suppresses known low-level dependency warning noise by default, while `planguard --verbose ...` still leaves a path for debugging unexpected internal failures
+
 Existing `0.5+` installs should upgrade in place:
 
 ```bash
@@ -111,6 +121,19 @@ The wizard scans your repo, detects languages, frameworks, test/build commands, 
 
 Review these files, then commit them. Any agent that reads `AGENTS.md` will follow the workflow.
 
+## Storage Layout
+
+Plan definitions and runtime state are intentionally separated:
+
+| Path | Purpose |
+|------|---------|
+| `.planguard/plans/<plan_name>/plan.yaml` | Canonical plan definition |
+| `.planguard/state/plans/<plan_name>/status.yaml` | Runtime status, activation baseline, verification results, handoff notes |
+| `.planguard/state/active_plans.yaml` | Local registry of plans and statuses |
+| `.planguard/state/log.jsonl` | Append-only lifecycle log |
+
+Legacy repositories that still keep plans under `docs/` can be migrated with `planguard upgrade --no-wizard`.
+
 ## Creating a Plan
 
 Run the wizard yourself:
@@ -171,9 +194,13 @@ Checks: structure validation, risk scoring (severity-weighted, threshold 6), dep
 
 ```bash
 planguard activate my_plan
+# or, when you intentionally want repo-wide baseline capture:
+planguard activate my_plan --baseline-mode repo
 ```
 
 This re-runs checks, records a git-backed baseline, and marks the plan as active. Only now may the agent write code — and only within the declared scope. If the agent needs to touch files outside scope, update the plan first.
+
+By default, activation captures a scoped baseline from the plan's `scope.included` paths. If the repo already has unrelated dirty files, PlanGuard records them separately as out-of-scope context instead of mixing them into the scoped baseline. This keeps `baseline_changed_files` focused on the plan while still preserving visibility into the rest of the worktree.
 
 Example first prompt after activation:
 
@@ -250,9 +277,9 @@ verify_commands:
 
 Available structured checks: `file_exists`, `file_not_exists`, `file_moved`, `text_contains`, `text_not_contains`.
 
-The `interpreter` field solves cross-platform issues: when set, the command runs as `[interpreter, "-c", command]` instead of through the default system shell. Use `bash`, `sh`, `pwsh`, `python3`, or any executable on `PATH`.
+The `interpreter` field solves cross-platform issues: PlanGuard uses the right invocation style for common interpreters (`cmd /C`, `pwsh -Command`, `python -c`, and shell-style `-c` for Unix shells) instead of relying on the default system shell. Use `bash`, `sh`, `pwsh`, `powershell`, `cmd`, `python3`, or any executable on `PATH`.
 
-All three formats can be mixed in the same list. Existing plans with plain string commands continue to work unchanged.
+All three formats can be mixed in the same list. Existing plans with plain string commands continue to work unchanged. Invalid structured entries fail verification with concise user-facing messages instead of raw tracebacks.
 
 ## Policies and Boundaries
 
@@ -289,6 +316,8 @@ Suspended plans retain their activation data and are excluded from collision det
 
 Each piece of work gets its own plan with a declared scope. `planguard check` detects when two active plans have overlapping paths — collisions must be resolved before both can be active. `planguard status` shows a table of all plans.
 
+If one plan is malformed, `planguard status` and `planguard list` still show the other plans and flag the invalid one with a concise parse summary.
+
 ## Session Log
 
 Every lifecycle event is logged to `.planguard/state/log.jsonl` — an append-only audit trail of what happened, when, and against which git state.
@@ -306,10 +335,12 @@ planguard plan                    # Create a plan (wizard)
 planguard plan --template <name>  # Create from template: docs-only, refactor, schema-change, service-integration
 planguard check [name]            # Run all checks, or check a specific plan
 planguard activate <name>         # Mark plan as ready to implement
+planguard activate <name> --baseline-mode repo
 planguard verify <name>           # Run verification commands (strings, interpreter, or structured checks)
 planguard complete <name>         # Mark plan as done (auto-fills handoff metadata)
 planguard suspend <name>          # Pause plan, unblock overlapping work
 planguard resume <name>           # Resume a suspended plan
+planguard resume <name> --refresh-baseline --baseline-mode repo
 planguard archive <name>          # Archive a plan
 planguard guard                   # Scan staged diff for database/schema risks
 planguard status                  # Table of all plans with status, priority, owner
