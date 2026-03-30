@@ -48,6 +48,17 @@ Works on Linux, macOS, and Windows. Requires Python 3.9+.
 
 ## Upgrade
 
+### 0.7.3 Highlights
+
+PlanGuard `0.7.3` is a performance-focused follow-up release for `status` and `list`:
+
+- default `planguard status` and `planguard list` now use cached verification state from plan status files and avoid expensive per-plan live freshness recomputation
+- `--refresh-verification` is available on both commands when you explicitly want current `passed` vs `stale` evaluation against the repo
+- malformed plan handling remains robust, so invalid plans are still visible without crashing the command
+- refresh mode reuses scoped git snapshots within a single command run where possible instead of recomputing the same scope repeatedly
+
+Tradeoff: the default fast path shows the last recorded verification result (`passed`, `failed`, or `—`). It does not compute `stale` unless you opt into refresh mode.
+
 ### 0.7.2 Highlights
 
 PlanGuard `0.7.2` is a robustness release focused on day-to-day workflow quality:
@@ -318,6 +329,8 @@ Each piece of work gets its own plan with a declared scope. `planguard check` de
 
 If one plan is malformed, `planguard status` and `planguard list` still show the other plans and flag the invalid one with a concise parse summary.
 
+For performance, `status` and `list` use cached verification results by default. Use `--refresh-verification` when you want current `passed` vs `stale` freshness against the repo.
+
 ## Session Log
 
 Every lifecycle event is logged to `.planguard/state/log.jsonl` — an append-only audit trail of what happened, when, and against which git state.
@@ -343,8 +356,10 @@ planguard resume <name>           # Resume a suspended plan
 planguard resume <name> --refresh-baseline --baseline-mode repo
 planguard archive <name>          # Archive a plan
 planguard guard                   # Scan staged diff for database/schema risks
-planguard status                  # Table of all plans with status, priority, owner
-planguard list [--all]            # List plans (--all includes completed/archived)
+planguard status                  # Fast table of all plans with cached verification state
+planguard status --refresh-verification
+planguard list [--all]            # Fast list view with cached verification state
+planguard list --all --refresh-verification
 planguard log [name]              # Show session log (optionally filtered by plan)
 planguard graph <name>            # Show dependency graph for a plan
 ```

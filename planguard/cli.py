@@ -931,7 +931,7 @@ def _scope_mismatches(plan_dir: Path, scope_paths: list[str], file_paths: list[s
     return sorted(set(out_of_scope))
 
 
-def _verification_matches_current_state(plan_dir: Path) -> bool:
+def _verification_matches_current_state(plan_dir: Path, *, current_snapshot: dict | None = None) -> bool:
     status_data = _read_status_yaml(plan_dir)
     verification = status_data.get("verification", {})
     if not isinstance(verification, dict) or not verification.get("passed"):
@@ -939,7 +939,7 @@ def _verification_matches_current_state(plan_dir: Path) -> bool:
 
     plan_data = _read_plan_yaml(plan_dir)
     scope_included = plan_data.get("scope", {}).get("included", [])
-    current = _capture_git_state(scope_paths=scope_included or None)
+    current = current_snapshot or _capture_git_state(scope_paths=scope_included or None)
     expected_head = verification.get("git_head", "")
     if expected_head and expected_head != current.get("git_head", ""):
         return False
@@ -966,18 +966,50 @@ def _summarize_issue(message: str, limit: int = 88) -> str:
     return compact[: limit - 3] + "..."
 
 
-def _verification_state(plan_dir: Path, status_data: dict | None) -> str:
+def _cached_verification_state(status_data: dict | None) -> str:
     if not isinstance(status_data, dict):
         return "—"
     verification = status_data.get("verification", {})
-    if not isinstance(verification, dict) or not verification.get("last_run"):
+    if not isinstance(verification, dict):
         return "—"
-    if verification.get("passed"):
-        return "passed" if _verification_matches_current_state(plan_dir) else "stale"
-    return "failed"
+    if verification.get("passed") is True:
+        return "passed"
+    if verification.get("last_run"):
+        return "failed"
+    return "—"
 
 
-def _plan_overview(plan_dir: Path) -> dict:
+def _verification_refresh_snapshot(plan_dir: Path, snapshot_cache: dict[tuple[str, ...], dict]) -> dict:
+    plan_data = _read_plan_yaml(plan_dir)
+    scope_included = plan_data.get("scope", {}).get("included", [])
+    cache_key = tuple(sorted(scope_included))
+    if cache_key not in snapshot_cache:
+        snapshot_cache[cache_key] = _capture_git_state(scope_paths=scope_included or None)
+    return snapshot_cache[cache_key]
+
+
+def _verification_state(
+    plan_dir: Path,
+    status_data: dict | None,
+    *,
+    refresh_verification: bool = False,
+    snapshot_cache: dict[tuple[str, ...], dict] | None = None,
+) -> str:
+    cached_state = _cached_verification_state(status_data)
+    if cached_state != "passed" or not refresh_verification:
+        return cached_state
+    if snapshot_cache is None:
+        snapshot_cache = {}
+    current_snapshot = _verification_refresh_snapshot(plan_dir, snapshot_cache)
+    return "passed" if _verification_matches_current_state(plan_dir, current_snapshot=current_snapshot) else "stale"
+
+
+def _plan_overview(
+    plan_dir: Path,
+    *,
+    refresh_verification: bool = False,
+    snapshot_cache: dict[tuple[str, ...], dict] | None = None,
+) -> dict:
     plan_data, plan_error = _safe_read_plan_yaml(plan_dir)
     status_data: dict | None = None
     status_error: str | None = None
@@ -1006,7 +1038,12 @@ def _plan_overview(plan_dir: Path) -> dict:
         "priority": meta.get("priority", "—") if isinstance(meta, dict) else "—",
         "owner": meta.get("owner", "—") if isinstance(meta, dict) else "—",
         "phase": phase,
-        "verified": _verification_state(plan_dir, status_data) if not plan_error else "—",
+        "verified": _verification_state(
+            plan_dir,
+            status_data,
+            refresh_verification=refresh_verification,
+            snapshot_cache=snapshot_cache,
+        ) if not plan_error else "—",
         "issue": issue,
         "plan_error": plan_error,
         "status_error": status_error,
@@ -1761,8 +1798,19 @@ def _check_single(plan_dir: Path) -> bool:
 # ---------------------------------------------------------------------------
 
 @app.command()
-def status():
-    """Show all plans and their current status."""
+def status(
+    refresh_verification: bool = typer.Option(
+        False,
+        "--refresh-verification",
+        help="Recompute freshness for previously passed verifications.",
+    ),
+):
+    """Show all plans and their current status.
+
+    Uses cached verification results by default. Pass
+    ``--refresh-verification`` to recompute live freshness for previously
+    passed plans.
+    """
     docs = _docs_dir()
     plan_dirs = discover_plan_dirs(docs)
 
@@ -1778,9 +1826,14 @@ def status():
     table.add_column("Phase")
     table.add_column("Verified")
     issues: list[tuple[str, str]] = []
+    snapshot_cache: dict[tuple[str, ...], dict] = {}
 
     for pd in plan_dirs:
-        overview = _plan_overview(pd)
+        overview = _plan_overview(
+            pd,
+            refresh_verification=refresh_verification,
+            snapshot_cache=snapshot_cache,
+        )
         plan_status = overview["status"]
         status_style = {
             "draft": "yellow",
@@ -2077,16 +2130,31 @@ def resume(
 @app.command(name="list")
 def list_plans(
     show_all: bool = typer.Option(False, "--all", "-a", help="Include completed and archived plans."),
+    refresh_verification: bool = typer.Option(
+        False,
+        "--refresh-verification",
+        help="Recompute freshness for previously passed verifications.",
+    ),
 ):
-    """List plans, filtered by status."""
+    """List plans, filtered by status.
+
+    Uses cached verification results by default. Pass
+    ``--refresh-verification`` to recompute live freshness for previously
+    passed plans.
+    """
     docs = _docs_dir()
     plan_dirs = discover_plan_dirs(docs)
     if not plan_dirs:
         print("[yellow]No plans found.[/yellow]")
         raise typer.Exit(code=0)
 
+    snapshot_cache: dict[tuple[str, ...], dict] = {}
     for pd in plan_dirs:
-        overview = _plan_overview(pd)
+        overview = _plan_overview(
+            pd,
+            refresh_verification=refresh_verification,
+            snapshot_cache=snapshot_cache,
+        )
         plan_status = overview["status"]
         if not show_all and plan_status in ("completed", "archived"):
             continue

@@ -3,10 +3,12 @@ import subprocess
 import sys
 import unittest
 import warnings
+from unittest import mock
 
 import yaml
 from typer.testing import CliRunner
 
+import planguard.cli as cli_module
 from planguard import __version__
 from planguard.config import get_default_plans_root, get_plans_root, get_registry_path, get_status_path
 from planguard.cli import _configure_warning_filters, app
@@ -261,6 +263,133 @@ class CliTests(unittest.TestCase):
             self.assertIn("broken_list_view", result.output)
             self.assertIn("issue:", result.output)
             self.assertNotIn("Traceback", result.output)
+
+    def test_status_uses_cached_verification_by_default(self) -> None:
+        with self.runner.isolated_filesystem():
+            self.runner.invoke(app, [
+                "plan", "cached verify",
+                "--objective", "Cached status",
+                "--scope", "README.md",
+                "--no-wizard",
+            ])
+            self._set_verify_commands("cached_verify", ["python -c \"print('ok')\""])
+            self.runner.invoke(app, ["activate", "cached_verify"])
+            self.runner.invoke(app, ["verify", "cached_verify"])
+
+            with mock.patch("planguard.cli._verification_matches_current_state", side_effect=AssertionError("should not refresh")):
+                result = self.runner.invoke(app, ["status"])
+
+            self.assertEqual(result.exit_code, 0, result.output)
+            self.assertIn("cached_verify", result.output)
+            self.assertIn("passed", result.output)
+            self.assertNotIn("stale", result.output)
+
+    def test_list_uses_cached_verification_by_default(self) -> None:
+        with self.runner.isolated_filesystem():
+            self.runner.invoke(app, [
+                "plan", "cached list verify",
+                "--objective", "Cached list",
+                "--scope", "README.md",
+                "--no-wizard",
+            ])
+            self._set_verify_commands("cached_list_verify", ["python -c \"print('ok')\""])
+            self.runner.invoke(app, ["activate", "cached_list_verify"])
+            self.runner.invoke(app, ["verify", "cached_list_verify"])
+
+            with mock.patch("planguard.cli._verification_matches_current_state", side_effect=AssertionError("should not refresh")):
+                result = self.runner.invoke(app, ["list", "--all"])
+
+            self.assertEqual(result.exit_code, 0, result.output)
+            self.assertIn("cached_list_verify", result.output)
+            self.assertIn("verify=passed", result.output)
+
+    def test_status_refresh_verification_can_mark_stale(self) -> None:
+        with self.runner.isolated_filesystem():
+            self.runner.invoke(app, [
+                "plan", "refresh verify",
+                "--objective", "Refresh status",
+                "--scope", "README.md",
+                "--no-wizard",
+            ])
+            self._set_verify_commands("refresh_verify", ["python -c \"print('ok')\""])
+            self.runner.invoke(app, ["activate", "refresh_verify"])
+            self.runner.invoke(app, ["verify", "refresh_verify"])
+
+            with mock.patch("planguard.cli._verification_matches_current_state", return_value=False) as mocked_refresh:
+                result = self.runner.invoke(app, ["status", "--refresh-verification"])
+
+            self.assertEqual(result.exit_code, 0, result.output)
+            self.assertIn("refresh_verify", result.output)
+            self.assertIn("stale", result.output)
+            self.assertEqual(mocked_refresh.call_count, 1)
+
+    def test_list_refresh_verification_can_mark_stale(self) -> None:
+        with self.runner.isolated_filesystem():
+            self.runner.invoke(app, [
+                "plan", "refresh list verify",
+                "--objective", "Refresh list",
+                "--scope", "README.md",
+                "--no-wizard",
+            ])
+            self._set_verify_commands("refresh_list_verify", ["python -c \"print('ok')\""])
+            self.runner.invoke(app, ["activate", "refresh_list_verify"])
+            self.runner.invoke(app, ["verify", "refresh_list_verify"])
+
+            with mock.patch("planguard.cli._verification_matches_current_state", return_value=False) as mocked_refresh:
+                result = self.runner.invoke(app, ["list", "--all", "--refresh-verification"])
+
+            self.assertEqual(result.exit_code, 0, result.output)
+            self.assertIn("refresh_list_verify", result.output)
+            self.assertIn("verify=stale", result.output)
+            self.assertEqual(mocked_refresh.call_count, 1)
+
+    def test_refresh_verification_reuses_snapshot_for_matching_scopes(self) -> None:
+        with self.runner.isolated_filesystem():
+            for name in ["shared verify one", "shared verify two"]:
+                self.runner.invoke(app, [
+                    "plan", name,
+                    "--objective", "Shared scope",
+                    "--scope", "README.md",
+                    "--no-wizard",
+                ])
+            self._set_verify_commands("shared_verify_one", ["python -c \"print('ok')\""])
+            self._set_verify_commands("shared_verify_two", ["python -c \"print('ok')\""])
+            self.runner.invoke(app, ["activate", "shared_verify_one"])
+            self.runner.invoke(app, ["activate", "shared_verify_two"])
+            self.runner.invoke(app, ["verify", "shared_verify_one"])
+            self.runner.invoke(app, ["verify", "shared_verify_two"])
+
+            with mock.patch("planguard.cli._capture_git_state", wraps=cli_module._capture_git_state) as mocked_capture:
+                result = self.runner.invoke(app, ["status", "--refresh-verification"])
+
+            self.assertEqual(result.exit_code, 0, result.output)
+            self.assertEqual(mocked_capture.call_count, 1)
+
+    def test_cached_verification_states_distinguish_failed_and_missing(self) -> None:
+        with self.runner.isolated_filesystem():
+            self.runner.invoke(app, [
+                "plan", "failed verify",
+                "--objective", "Failed verification",
+                "--scope", "README.md",
+                "--no-wizard",
+            ])
+            self._set_verify_commands("failed_verify", ["python -c \"import sys; sys.exit(1)\""])
+            self.runner.invoke(app, ["activate", "failed_verify"])
+            failed_result = self.runner.invoke(app, ["verify", "failed_verify"])
+            self.assertNotEqual(failed_result.exit_code, 0)
+
+            self.runner.invoke(app, [
+                "plan", "never verified",
+                "--objective", "Never verified",
+                "--scope", "README.md",
+                "--no-wizard",
+            ])
+
+            result = self.runner.invoke(app, ["list", "--all"])
+            self.assertEqual(result.exit_code, 0, result.output)
+            self.assertIn("failed_verify", result.output)
+            self.assertIn("verify=failed", result.output)
+            self.assertIn("never_verified", result.output)
 
     def test_complete_sets_status_to_completed(self) -> None:
         with self.runner.isolated_filesystem():
