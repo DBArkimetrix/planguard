@@ -48,9 +48,9 @@ Works on Linux, macOS, and Windows. Requires Python 3.9+.
 
 ## Upgrade
 
-### 0.7.3 Highlights
+### 0.7.4 Highlights
 
-PlanGuard `0.7.3` is a performance-focused follow-up release for `status` and `list`:
+PlanGuard `0.7.4` is a performance-focused follow-up release for `status` and `list`:
 
 - default `planguard status` and `planguard list` now use cached verification state from plan status files and avoid expensive per-plan live freshness recomputation
 - `--refresh-verification` is available on both commands when you explicitly want current `passed` vs `stale` evaluation against the repo
@@ -272,6 +272,13 @@ verify_commands:
     interpreter: pwsh
     timeout: 120
 
+  # Non-shell argv invocation with per-command environment variables
+  - argv: ["dotnet", "test", "tests/PlanGuard.Tests.csproj"]
+    shell: false
+    env:
+      DOTNET_CLI_HOME: .planguard/tmp/dotnet
+      NUGET_PACKAGES: .planguard/tmp/nuget
+
   # Structured assertion — no shell, declarative
   - check: file_exists
     path: src/config.py
@@ -288,7 +295,15 @@ verify_commands:
 
 Available structured checks: `file_exists`, `file_not_exists`, `file_moved`, `text_contains`, `text_not_contains`.
 
+Command entries also support:
+
+- `env`: merge extra environment variables into the subprocess environment
+- `shell: false`: bypass the platform shell for `command` strings
+- `argv`: provide an explicit argument vector for the most portable non-shell execution path
+
 The `interpreter` field solves cross-platform issues: PlanGuard uses the right invocation style for common interpreters (`cmd /C`, `pwsh -Command`, `python -c`, and shell-style `-c` for Unix shells) instead of relying on the default system shell. Use `bash`, `sh`, `pwsh`, `powershell`, `cmd`, `python3`, or any executable on `PATH`.
+
+When a verification command fails or times out, PlanGuard now preserves the tail of partial `stdout` and `stderr` so timeout debugging does not lose the most relevant context.
 
 All three formats can be mixed in the same list. Existing plans with plain string commands continue to work unchanged. Invalid structured entries fail verification with concise user-facing messages instead of raw tracebacks.
 

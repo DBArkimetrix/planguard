@@ -1006,6 +1006,86 @@ class CliTests(unittest.TestCase):
             self.assertIn("file_moved: before.txt -> after.txt", verify_result.output)
             self.assertIn(f"(via {sys.executable})", verify_result.output)
 
+    def test_verify_supports_structured_command_env(self) -> None:
+        with self.runner.isolated_filesystem():
+            Path("README.md").write_text("hello world\n", encoding="utf-8")
+            result = self.runner.invoke(app, [
+                "plan", "structured env verify",
+                "--objective", "Structured verification with env",
+                "--scope", "README.md",
+                "--no-wizard",
+            ])
+            self.assertEqual(result.exit_code, 0, result.output)
+            self._set_verify_commands("structured_env_verify", [
+                {
+                    "command": "import os; raise SystemExit(0 if os.environ.get('VERIFY_TOKEN') == 'abc123' else 1)",
+                    "interpreter": sys.executable,
+                    "env": {"VERIFY_TOKEN": "abc123"},
+                },
+            ])
+            self.runner.invoke(app, ["activate", "structured_env_verify"])
+
+            verify_result = self.runner.invoke(app, ["verify", "structured_env_verify"])
+            self.assertEqual(verify_result.exit_code, 0, verify_result.output)
+            self.assertIn(f"(via {sys.executable})", verify_result.output)
+
+    def test_verify_timeout_reports_partial_stdout_and_stderr(self) -> None:
+        with self.runner.isolated_filesystem():
+            Path("README.md").write_text("hello world\n", encoding="utf-8")
+            result = self.runner.invoke(app, [
+                "plan", "timeout verify",
+                "--objective", "Timeout verification diagnostics",
+                "--scope", "README.md",
+                "--no-wizard",
+            ])
+            self.assertEqual(result.exit_code, 0, result.output)
+            self._set_verify_commands("timeout_verify", [
+                {
+                    "command": (
+                        "import sys, time; "
+                        "print('before-timeout', flush=True); "
+                        "sys.stderr.write('still-running\\n'); "
+                        "sys.stderr.flush(); "
+                        "time.sleep(2)"
+                    ),
+                    "interpreter": sys.executable,
+                    "timeout": 1,
+                },
+            ])
+            self.runner.invoke(app, ["activate", "timeout_verify"])
+
+            verify_result = self.runner.invoke(app, ["verify", "timeout_verify"])
+            self.assertNotEqual(verify_result.exit_code, 0)
+            self.assertIn("Timed out after 1s", verify_result.output)
+            self.assertIn("before-timeout", verify_result.output)
+            self.assertIn("still-running", verify_result.output)
+
+    def test_verify_supports_argv_and_non_shell_commands(self) -> None:
+        with self.runner.isolated_filesystem():
+            Path("README.md").write_text("hello world\n", encoding="utf-8")
+            result = self.runner.invoke(app, [
+                "plan", "argv verify",
+                "--objective", "Structured verification with argv",
+                "--scope", "README.md",
+                "--no-wizard",
+            ])
+            self.assertEqual(result.exit_code, 0, result.output)
+            self._set_verify_commands("argv_verify", [
+                {"command": f"{sys.executable} -c pass", "shell": False},
+                {
+                    "argv": [
+                        sys.executable,
+                        "-c",
+                        "import pathlib; raise SystemExit(0 if pathlib.Path('README.md').exists() else 1)",
+                    ],
+                },
+            ])
+            self.runner.invoke(app, ["activate", "argv_verify"])
+
+            verify_result = self.runner.invoke(app, ["verify", "argv_verify"])
+            self.assertEqual(verify_result.exit_code, 0, verify_result.output)
+            self.assertIn("(shell=false)", verify_result.output)
+
     def test_verify_reports_invalid_structured_entries_cleanly(self) -> None:
         with self.runner.isolated_filesystem():
             Path("README.md").write_text("hello world\n", encoding="utf-8")

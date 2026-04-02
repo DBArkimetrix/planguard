@@ -1,6 +1,6 @@
 [project]
 name = "planguard"
-version = "0.7.3"
+version = "0.7.4"
 description = "Make AI-assisted development safer, auditable, and release-ready without breaking normal CLI and git workflows"
 authors = [
     { name = "Arkimetrix Analytics Ltd." }
@@ -38,6 +38,9 @@ Documentation = "https://github.com/DBArkimetrix/planguard#readme"
 
 [tool.poetry]
 packages = [{ include = "planguard" }]
+include = [
+    { path = "CLAUDE.md", format = ["sdist", "wheel"] }
+]
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

@@ -2179,7 +2179,7 @@ def verify(name: str = typer.Argument(..., help="Plan name to verify.")):
 
     Supports both plain shell commands (strings) and structured checks (dicts):
       - check: file_exists / file_not_exists / file_moved / text_contains / text_not_contains
-      - command: shell command with optional interpreter
+      - command / argv: command entries with optional env, shell, and interpreter settings
     """
     from planguard.verification.primitives import run_check, format_label
 
@@ -2231,7 +2231,7 @@ def verify(name: str = typer.Argument(..., help="Plan name to verify.")):
         else:
             print(f"{_FAIL} {label}")
             if result.detail:
-                for line in result.detail.splitlines()[-5:]:
+                for line in result.detail.splitlines():
                     print(f"    {line}")
             all_passed = False
 
