@@ -1,6 +1,6 @@
 [project]
 name = "planguard"
-version = "0.7.4"
+version = "0.7.5"
 description = "Make AI-assisted development safer, auditable, and release-ready without breaking normal CLI and git workflows"
 authors = [
     { name = "Arkimetrix Analytics Ltd." }

@@ -723,6 +723,39 @@ class CliTests(unittest.TestCase):
             self.assertIn("remaining_steps", migrated_status)
             self.assertIn("handoff", migrated_status)
 
+    def test_upgrade_rewrites_legacy_verify_command_strings_to_structured_entries(self) -> None:
+        with self.runner.isolated_filesystem():
+            legacy_plan = self._legacy_plan_data(
+                "verify_upgrade",
+                status="draft",
+                scope=["src/verify"],
+            )
+            legacy_plan["verify_commands"] = [
+                "python -c \"print('ok')\"",
+                {"check": "file_exists", "path": "README.md"},
+            ]
+            self._write_legacy_plan(
+                "verify_upgrade",
+                plan_data=legacy_plan,
+                status_data=self._legacy_status(),
+            )
+
+            result = self.runner.invoke(app, ["upgrade", ".", "--no-wizard"])
+            self.assertEqual(result.exit_code, 0, result.output)
+
+            migrated_plan = yaml.safe_load(
+                (get_default_plans_root() / "verify_upgrade" / "plan.yaml").read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                migrated_plan["verify_commands"][0],
+                {"command": "python -c \"print('ok')\"", "shell": True},
+            )
+            self.assertEqual(
+                migrated_plan["verify_commands"][1],
+                {"check": "file_exists", "path": "README.md"},
+            )
+            self.assertIn("verify_commands string entries rewritten", result.output)
+
     def test_upgrade_and_check_handle_mixed_legacy_repo(self) -> None:
         with self.runner.isolated_filesystem():
             placeholder = {
@@ -979,6 +1012,33 @@ class CliTests(unittest.TestCase):
             self.assertEqual(verify_result.exit_code, 0, verify_result.output)
             self.assertIn("python -m unittest discover", verify_result.output)
 
+    def test_verify_infers_poetry_unittest_discovery_with_test_directory(self) -> None:
+        with self.runner.isolated_filesystem():
+            Path("pyproject.toml").write_text(
+                "\n".join([
+                    "[tool.poetry]",
+                    'name = "x"',
+                    'version = "0.1.0"',
+                    'description = "test fixture"',
+                    'authors = ["Test User <test@example.com>"]',
+                    "",
+                ]),
+                encoding="utf-8",
+            )
+            Path("poetry.lock").write_text("", encoding="utf-8")
+            Path("tests").mkdir()
+            result = self.runner.invoke(app, [
+                "plan", "poetry infer verify",
+                "--objective", "Infer Poetry verification commands",
+                "--no-wizard",
+            ])
+            self.assertEqual(result.exit_code, 0, result.output)
+            self.runner.invoke(app, ["activate", "poetry_infer_verify"])
+
+            verify_result = self.runner.invoke(app, ["verify", "poetry_infer_verify"])
+            self.assertEqual(verify_result.exit_code, 0, verify_result.output)
+            self.assertIn("poetry run python -m unittest discover -s tests", verify_result.output)
+
     def test_verify_supports_structured_checks_and_explicit_interpreter(self) -> None:
         with self.runner.isolated_filesystem():
             Path("README.md").write_text("hello world\n", encoding="utf-8")
@@ -1005,6 +1065,24 @@ class CliTests(unittest.TestCase):
             self.assertIn("file_exists: README.md", verify_result.output)
             self.assertIn("file_moved: before.txt -> after.txt", verify_result.output)
             self.assertIn(f"(via {sys.executable})", verify_result.output)
+
+    def test_verify_warns_but_allows_legacy_string_verify_commands(self) -> None:
+        with self.runner.isolated_filesystem():
+            Path("README.md").write_text("hello world\n", encoding="utf-8")
+            result = self.runner.invoke(app, [
+                "plan", "legacy verify warning",
+                "--objective", "Legacy verification warning",
+                "--scope", "README.md",
+                "--no-wizard",
+            ])
+            self.assertEqual(result.exit_code, 0, result.output)
+            self._set_verify_commands("legacy_verify_warning", ["python -c \"print('ok')\""])
+            self.runner.invoke(app, ["activate", "legacy_verify_warning"])
+
+            verify_result = self.runner.invoke(app, ["verify", "legacy_verify_warning"])
+            self.assertEqual(verify_result.exit_code, 0, verify_result.output)
+            self.assertIn("Legacy plain-string verify_commands detected.", verify_result.output)
+            self.assertIn("backward compatibility", verify_result.output)
 
     def test_verify_supports_structured_command_env(self) -> None:
         with self.runner.isolated_filesystem():

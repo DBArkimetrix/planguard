@@ -55,6 +55,14 @@ class DetectProjectTests(unittest.TestCase):
             info = detect_project(tmp)
             self.assertTrue(any("pytest" in cmd for cmd in info.test_commands))
 
+    def test_detects_poetry_unittest_with_test_directory(self) -> None:
+        with TemporaryDirectory() as tmp:
+            (Path(tmp) / "pyproject.toml").write_text('[tool.poetry]\nname = "x"\n')
+            (Path(tmp) / "poetry.lock").write_text("")
+            (Path(tmp) / "tests").mkdir()
+            info = detect_project(tmp)
+            self.assertIn("poetry run python -m unittest discover -s tests", info.test_commands)
+
     def test_detects_existing_plans(self) -> None:
         with TemporaryDirectory() as tmp:
             plan_dir = Path(tmp) / "docs" / "my_plan"

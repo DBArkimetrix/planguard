@@ -243,13 +243,14 @@ def _infer_commands(
         has_pytest = (root / "pyproject.toml").exists() and "pytest" in (
             (root / "pyproject.toml").read_text(encoding="utf-8") if (root / "pyproject.toml").exists() else ""
         )
+        unittest_command = _python_unittest_command(info.test_dirs)
         if has_poetry:
             build.append("poetry install")
-            test.append("poetry run pytest" if has_pytest else "poetry run python -m unittest")
+            test.append("poetry run pytest" if has_pytest else f"poetry run {unittest_command}")
         elif has_pytest:
             test.append("pytest")
         else:
-            test.append("python -m unittest discover")
+            test.append(unittest_command)
 
         # Lint
         if (root / "pyproject.toml").exists():
@@ -272,3 +273,9 @@ def _infer_commands(
         return result
 
     return _dedup(build), _dedup(test), _dedup(lint)
+
+
+def _python_unittest_command(test_dirs: list[str]) -> str:
+    if test_dirs:
+        return f"python -m unittest discover -s {test_dirs[0]}"
+    return "python -m unittest discover"

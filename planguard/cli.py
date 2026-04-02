@@ -458,6 +458,30 @@ def _dedupe_preserving_order(values: list[str]) -> list[str]:
     return deduped
 
 
+def _normalize_verify_commands(entries) -> tuple[list, list[str]]:
+    if not isinstance(entries, list):
+        return [], []
+
+    normalized: list = []
+    notes: list[str] = []
+    rewrote_plain_strings = False
+    for entry in entries:
+        if isinstance(entry, str):
+            normalized.append({"command": entry, "shell": True})
+            rewrote_plain_strings = True
+        else:
+            normalized.append(entry)
+
+    if rewrote_plain_strings:
+        notes.append("verify_commands string entries rewritten to structured command entries")
+
+    return normalized, notes
+
+
+def _legacy_verify_command_labels(entries) -> list[str]:
+    return [entry for entry in entries if isinstance(entry, str)]
+
+
 def _phase_for_status(status: str) -> str:
     return {
         "draft": "planning",
@@ -805,6 +829,9 @@ def _normalize_legacy_plan(plan_dir: Path, base: Path) -> dict:
     data["sprints"] = sprints
     data["risks"] = data.get("risks") if isinstance(data.get("risks"), list) else []
     data["dependencies"] = data.get("dependencies") if isinstance(data.get("dependencies"), list) else []
+    verify_commands, verify_notes = _normalize_verify_commands(data.get("verify_commands"))
+    data["verify_commands"] = verify_commands
+    summary["notes"].extend(verify_notes)
 
     migration = data.get("migration")
     if not isinstance(migration, dict):
@@ -2205,6 +2232,13 @@ def verify(name: str = typer.Argument(..., help="Plan name to verify.")):
         print(f"[red]No verification commands available for {name}.[/red]")
         print("[dim]Add verify_commands to your plan.yaml or configure a detectable project test command.[/dim]")
         raise typer.Exit(code=1)
+    legacy_commands = _legacy_verify_command_labels(commands)
+    if legacy_commands:
+        print("[yellow]Legacy plain-string verify_commands detected.[/yellow]")
+        print(
+            "[dim]They still run for backward compatibility, but prefer structured entries such as "
+            "{command: \"pytest -q\", shell: true} or argv-based commands.[/dim]"
+        )
 
     print(Panel(f"[bold]Verifying: {name}[/bold]", style="cyan"))
 

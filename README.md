@@ -48,16 +48,16 @@ Works on Linux, macOS, and Windows. Requires Python 3.9+.
 
 ## Upgrade
 
-### 0.7.4 Highlights
+### 0.7.5 Highlights
 
-PlanGuard `0.7.4` is a performance-focused follow-up release for `status` and `list`:
+PlanGuard `0.7.5` keeps legacy verification configs working while improving the migration path:
 
-- default `planguard status` and `planguard list` now use cached verification state from plan status files and avoid expensive per-plan live freshness recomputation
-- `--refresh-verification` is available on both commands when you explicitly want current `passed` vs `stale` evaluation against the repo
-- malformed plan handling remains robust, so invalid plans are still visible without crashing the command
-- refresh mode reuses scoped git snapshots within a single command run where possible instead of recomputing the same scope repeatedly
+- plain-string `verify_commands` still run for backward compatibility, so upgrades do not break existing plans
+- `planguard upgrade --no-wizard` now rewrites legacy string-based `verify_commands` into structured `{command: ..., shell: true}` entries
+- `planguard verify` warns when a plan still uses legacy string entries and points to the structured replacement format
+- structured command entries continue to support per-command `env`, non-shell execution, and better timeout diagnostics
 
-Tradeoff: the default fast path shows the last recorded verification result (`passed`, `failed`, or `—`). It does not compute `stale` unless you opt into refresh mode.
+This release preserves the old execution path while making the structured format the preferred steady state.
 
 ### 0.7.2 Highlights
 
@@ -84,7 +84,7 @@ planguard upgrade --no-wizard
 planguard check
 ```
 
-On legacy repositories that still keep plans under `docs/`, `planguard upgrade --no-wizard` now migrates them to the local default `.planguard/plans/`, refreshes the managed AGENTS workflow, and keeps runtime state under `.planguard/state/`.
+On legacy repositories that still keep plans under `docs/`, `planguard upgrade --no-wizard` now migrates them to the local default `.planguard/plans/`, refreshes the managed AGENTS workflow, keeps runtime state under `.planguard/state/`, and rewrites legacy plain-string `verify_commands` into structured command entries.
 
 Upgrade also normalizes common legacy plan shapes so that a follow-up `planguard check` is usable immediately:
 
@@ -108,7 +108,7 @@ planguard check
 Existing plans remain compatible. Once upgraded, you can use the newer capabilities where they help:
 
 - use `planguard plan --template <name>` for tailored plan generation
-- use structured `verify_commands` entries for deterministic or shell-free verification
+- use structured `verify_commands` entries for deterministic or shell-free verification; `planguard upgrade` can rewrite older string entries for you
 - add `renames:` mappings to plans that intentionally move files after activation
 - use `planguard suspend <plan>` / `planguard resume <plan>` when overlapping work needs to pause safely
 
