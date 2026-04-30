@@ -48,6 +48,13 @@ Works on Linux, macOS, and Windows. Requires Python 3.9+.
 
 ## Upgrade
 
+### 0.7.6 Highlights
+
+PlanGuard `0.7.6` is a Windows correctness fix:
+
+- `planguard complete` no longer rejects plans whose `status.yaml` was rewritten by `planguard verify` on Windows
+- bookkeeping paths are now normalized to forward slashes so they match the paths git produces, regardless of OS
+
 ### 0.7.5 Highlights
 
 PlanGuard `0.7.5` keeps legacy verification configs working while improving the migration path:

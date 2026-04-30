@@ -1237,3 +1237,63 @@ class CliTests(unittest.TestCase):
             check_result = self.runner.invoke(app, ["check", "rename_plan"])
             self.assertEqual(check_result.exit_code, 0, check_result.output)
             self.assertNotIn("Changed files outside declared scope", check_result.output)
+
+    def test_plan_bookkeeping_files_uses_forward_slashes(self) -> None:
+        with self.runner.isolated_filesystem():
+            create_result = self.runner.invoke(app, [
+                "plan", "bookkeeping paths",
+                "--objective", "Bookkeeping path normalization",
+                "--no-wizard",
+            ])
+            self.assertEqual(create_result.exit_code, 0, create_result.output)
+
+            plan_dir = get_default_plans_root() / "bookkeeping_paths"
+            for path in cli_module._plan_bookkeeping_files(plan_dir):
+                self.assertNotIn("\\", path, f"backslash in bookkeeping path: {path!r}")
+
+    def test_verification_matches_when_only_bookkeeping_file_changed(self) -> None:
+        with self.runner.isolated_filesystem():
+            create_result = self.runner.invoke(app, [
+                "plan", "bookkeeping match",
+                "--objective", "Verification ignores bookkeeping noise",
+                "--scope", "README.md",
+                "--no-wizard",
+            ])
+            self.assertEqual(create_result.exit_code, 0, create_result.output)
+
+            plan_dir = get_default_plans_root() / "bookkeeping_match"
+            bookkeeping = cli_module._plan_bookkeeping_files(plan_dir)
+            status_rel = next(p for p in bookkeeping if p.endswith("status.yaml"))
+
+            status_data = cli_module._read_status_yaml(plan_dir)
+            status_data["verification"] = {
+                "passed": True,
+                "last_run": "2025-01-01T00:00:00Z",
+                "git_branch": "main",
+                "git_head": "deadbeef",
+                "changed_files": [],
+                "fingerprints": {"src/foo.py": "sha-foo"},
+                "commands": [],
+                "results": [],
+            }
+            cli_module._write_status_yaml(plan_dir, status_data)
+
+            current_snapshot = {
+                "is_git_repo": True,
+                "git_branch": "main",
+                "git_head": "deadbeef",
+                "changed_files": [status_rel],
+                "fingerprints": {
+                    "src/foo.py": "sha-foo",
+                    status_rel: "fingerprint-after-verify-rewrote-status",
+                },
+                "context_changed_files": [],
+                "context_fingerprints": {},
+                "captured_at": "2025-01-01T00:00:01Z",
+            }
+
+            self.assertTrue(
+                cli_module._verification_matches_current_state(
+                    plan_dir, current_snapshot=current_snapshot
+                )
+            )

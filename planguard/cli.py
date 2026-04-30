@@ -786,7 +786,7 @@ def _normalize_legacy_plan(plan_dir: Path, base: Path) -> dict:
         summary["notes"].append(f"status {original_status} -> {normalized_status}")
         summary["suspended"] = normalized_status == "suspended"
 
-    fallback_scope = str((plan_dir / "plan.yaml").relative_to(base)).replace("\\", "/")
+    fallback_scope = (plan_dir / "plan.yaml").relative_to(base).as_posix()
     included_scope, used_fallback_scope = _infer_scope_paths(data, fallback_scope)
     needs_review = normalized_status == "suspended"
     if used_fallback_scope:
@@ -895,9 +895,9 @@ def _plan_bookkeeping_files(plan_dir: Path) -> set[str]:
     return {
         f"{root}/{plan_dir.name}",
         f"{root}/{plan_dir.name}/plan.yaml",
-        str(get_status_path(plan_dir.name, repo_root).relative_to(repo_root)),
-        str(get_registry_path(repo_root).relative_to(repo_root)),
-        str(get_log_path(repo_root).relative_to(repo_root)),
+        get_status_path(plan_dir.name, repo_root).relative_to(repo_root).as_posix(),
+        get_registry_path(repo_root).relative_to(repo_root).as_posix(),
+        get_log_path(repo_root).relative_to(repo_root).as_posix(),
         ".planguard/log.jsonl",
         "docs/planning/active_plans.yaml",
     }
